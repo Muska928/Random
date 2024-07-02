@@ -1,1 +1,12 @@
+!pip install vaderSentiment
 
+# Import VADER sentiment analyzer
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+# Initialize VADER sentiment analyzer
+sia = SentimentIntensityAnalyzer()
+
+# Sample sentiment analysis
+sample_text = "VADER is a great tool for sentiment analysis!"
+sentiment = sia.polarity_scores(sample_text)
+print(sentiment)
