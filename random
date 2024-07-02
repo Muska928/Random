@@ -1,1 +1,183 @@
+import pandas as pd
+import spacy
+import gensim
+import matplotlib.pyplot as plt
+import seaborn as sns
+from textblob import TextBlob
+import re
+
+# Load data from Salesforce analytics
+df_salesforce = pd.read_excel('Salesforce_Deals_Text_Analytics.xlsx')
+
+# Concatenate win/loss comments and reasons into a single string variable
+df_salesforce['win_loss_text'] = df_salesforce[['win_loss_comments_text', 'win_loss_reason_text']].apply(lambda x: ' '.join(x.dropna()), axis=1)
+
+# Load Spacy model
+nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
+
+# Function to preprocess text
+def preprocess(document):
+    document = document.lower()  # Lowercase the text
+    document = re.sub(r'[^a-zA-Z\s]', '', document)  # Remove special characters and numbers
+    document = re.sub(r'\s+', ' ', document).strip()  # Remove extra whitespace
+    doc = nlp(document)  # Tokenize and lemmatize
+    words = [token.lemma_ for token in doc if not token.is_stop and not token.is_punct and len(token.lemma_) > 2]
+    return words
+
+# Preprocess win/loss text data
+df_salesforce['processed_text'] = df_salesforce['win_loss_text'].map(preprocess)
+processed_texts = df_salesforce['processed_text'].tolist()
+
+# Segregate Win/Loss Deals
+df_salesforce['deal_status'] = df_salesforce['stage_name'].apply(lambda x: 'Won' if x == 'Closed Won' else 'Lost')
+
+# Separate dataframes for won and lost deals
+df_won = df_salesforce[df_salesforce['deal_status'] == 'Won']
+df_lost = df_salesforce[df_salesforce['deal_status'] == 'Lost']
+
+# Prepare the data for topic modeling for won deals
+processed_texts_won = df_won['processed_text'].tolist()
+
+# Prepare the data for topic modeling for lost deals
+processed_texts_lost = df_lost['processed_text'].tolist()
+
+# Create bigram and trigram models for won deals
+bigram_won = gensim.models.Phrases(processed_texts_won, min_count=5, threshold=100)
+trigram_won = gensim.models.Phrases(bigram_won[processed_texts_won], threshold=100)
+bigram_mod_won = gensim.models.phrases.Phraser(bigram_won)
+trigram_mod_won = gensim.models.phrases.Phraser(trigram_won)
+
+# Create bigram and trigram models for lost deals
+bigram_lost = gensim.models.Phrases(processed_texts_lost, min_count=5, threshold=100)
+trigram_lost = gensim.models.Phrases(bigram_lost[processed_texts_lost], threshold=100)
+bigram_mod_lost = gensim.models.phrases.Phraser(bigram_lost)
+trigram_mod_lost = gensim.models.phrases.Phraser(trigram_lost)
+
+# Applying bigrams and trigrams to the preprocessed texts
+texts_bigrams_won = [bigram_mod_won[doc] for doc in processed_texts_won]
+texts_trigrams_won = [trigram_mod_won[bigram_mod_won[doc]] for doc in texts_bigrams_won]
+texts_bigrams_lost = [bigram_mod_lost[doc] for doc in processed_texts_lost]
+texts_trigrams_lost = [trigram_mod_lost[bigram_mod_lost[doc]] for doc in texts_bigrams_lost]
+
+# Creating dictionary for won deals
+dictionary_won = gensim.corpora.Dictionary(texts_trigrams_won)
+
+# Creating dictionary for lost deals
+dictionary_lost = gensim.corpora.Dictionary(texts_trigrams_lost)
+
+# Filtering dictionary for won deals
+dictionary_won.filter_extremes(no_below=int(len(texts_trigrams_won) * 0.01), no_above=0.5)
+
+# Filtering dictionary for lost deals
+dictionary_lost.filter_extremes(no_below=int(len(texts_trigrams_lost) * 0.01), no_above=0.5)
+
+# Creating the corpus for won deals
+corpus_won = [dictionary_won.doc2bow(text) for text in texts_trigrams_won]
+
+# Creating the corpus for lost deals
+corpus_lost = [dictionary_lost.doc2bow(text) for text in texts_trigrams_lost]
+
+# Function to compute coherence values for LDA models
+def compute_coherence_values(dictionary, corpus, texts, limit, start=2, step=1):
+    coherence_values = []
+    model_list = []
+    for num_topics in range(start, limit, step):
+        model = gensim.models.LdaMulticore(corpus=corpus, num_topics=num_topics, id2word=dictionary, passes=10, workers=2, random_state=5)
+        model_list.append(model)
+        coherence_model = gensim.models.CoherenceModel(model=model, texts=texts, dictionary=dictionary, coherence='c_v')
+        coherence_values.append(coherence_model.get_coherence())
+    return model_list, coherence_values
+
+# Computing coherence values and selecting optimal model for won deals
+model_list_won, coherence_values_won = compute_coherence_values(dictionary=dictionary_won, corpus=corpus_won, texts=texts_trigrams_won, start=2, limit=13, step=1)
+optimal_model_won = model_list_won[coherence_values_won.index(max(coherence_values_won))]
+
+# Computing coherence values and selecting optimal model for lost deals
+model_list_lost, coherence_values_lost = compute_coherence_values(dictionary=dictionary_lost, corpus=corpus_lost, texts=texts_trigrams_lost, start=2, limit=13, step=1)
+optimal_model_lost = model_list_lost[coherence_values_lost.index(max(coherence_values_lost))]
+
+# Extracting top words from each topic for won deals
+def extract_top_words(model, num_words):
+    top_words_per_topic = []
+    for topic_id in range(model.num_topics):
+        top_words = model.show_topic(topic_id, num_words)
+        top_words_per_topic.append(' '.join([word for word, _ in top_words]))
+    return top_words_per_topic
+
+top_words_per_topic_won = extract_top_words(optimal_model_won, 5)
+top_words_per_topic_lost = extract_top_words(optimal_model_lost, 5)
+
+# Assigning main topic column to the won deals dataframe
+def get_main_topic(corpus, model):
+    topic_weights = model[corpus]
+    main_topic = max(topic_weights, key=lambda x: x[1])[0]
+    return main_topic
+
+df_won['main_topic'] = [get_main_topic(corp, optimal_model_won) for corp in corpus_won]
+df_lost['main_topic'] = [get_main_topic(corp, optimal_model_lost) for corp in corpus_lost]
+
+# Adding the topic name correlated with main topic rank to the dataframes
+df_won['main_topic_name'] = df_won['main_topic'].map(lambda x: top_words_per_topic_won[x])
+df_lost['main_topic_name'] = df_lost['main_topic'].map(lambda x: top_words_per_topic_lost[x])
+
+# Perform sentiment analysis
+def get_sentiment(text):
+    return TextBlob(text).sentiment.polarity
+
+df_won['sentiment'] = df_won['win_loss_text'].apply(get_sentiment)
+df_lost['sentiment'] = df_lost['win_loss_text'].apply(get_sentiment)
+
+# Categorize sentiment
+df_won['sentiment_category'] = pd.cut(df_won['sentiment'], bins=[-1, -0.1, 0.1, 1], labels=['Negative', 'Neutral', 'Positive'])
+df_lost['sentiment_category'] = pd.cut(df_lost['sentiment'], bins=[-1, -0.1, 0.1, 1], labels=['Negative', 'Neutral', 'Positive'])
+
+# Plotting the distribution of topics with top words as labels for won deals
+topic_counts_won = df_won['main_topic'].value_counts().sort_index()
+plt.style.use('fivethirtyeight')
+plt.figure(figsize=(12, 6))
+sns.barplot(x=topic_counts_won.index, y=topic_counts_won.values)
+plt.xticks(range(len(top_words_per_topic_won)), top_words_per_topic_won, rotation=45, ha='right')
+plt.xlabel('Topic')
+plt.ylabel('Number of Deals')
+plt.title('Distribution of Topics in Won Deals')
+plt.show()
+
+# Plotting the distribution of topics with top words as labels for lost deals
+topic_counts_lost = df_lost['main_topic'].value_counts().sort_index()
+plt.style.use('fivethirtyeight')
+plt.figure(figsize=(12, 6))
+sns.barplot(x=topic_counts_lost.index, y=topic_counts_lost.values)
+plt.xticks(range(len(top_words_per_topic_lost)), top_words_per_topic_lost, rotation=45, ha='right')
+plt.xlabel('Topic')
+plt.ylabel('Number of Deals')
+plt.title('Distribution of Topics in Lost Deals')
+plt.show()
+
+# Plotting sentiment distribution for won deals
+plt.figure(figsize=(10, 6))
+sns.countplot(x='sentiment_category', data=df_won, palette=['red', 'gray', 'green'])
+plt.xlabel('Sentiment Category')
+plt.ylabel('Number of Deals')
+plt.title('Sentiment Analysis of Won Deals')
+plt.show()
+
+# Plotting sentiment distribution for lost deals
+plt.figure(figsize=(10, 6))
+sns.countplot(x='sentiment_category', data=df_lost, palette=['red', 'gray', 'green'])
+plt.xlabel('Sentiment Category')
+plt.ylabel('Number of Deals')
+plt.title('Sentiment Analysis of Lost Deals')
+plt.show()
+
+# Comparative Visualization for Win/Loss Analysis
+sns.countplot(x='main_topic_name', hue='deal_status', data=pd.concat([df_won, df_lost]), palette=['blue', 'orange'])
+plt.xlabel('Main Topic')
+plt.ylabel('Number of Deals')
+plt.title('Comparison of Main Topics in Won vs. Lost Deals')
+plt.xticks(rotation=45, ha='right')
+plt.show()
+
+# Export the dataframes with main topics and sentiment analysis to Excel
+df_won.to_excel('Won_Deals_Topics_with_Sentiment.xlsx', index=False)
+df_lost.to_excel('Lost_Deals_Topics_with_Sentiment.xlsx', index=False)
 
