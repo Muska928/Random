@@ -1,1 +1,29 @@
+# Function to get sentiment and triggers using OpenAI
+def analyze_text(text):
+    prompt = f"""
+    {few_shot_examples}
+    
+    Example:
+    Text: "{text}"
+    Sentiment:
+    Trigger:
+    """
+    response = openai.Completion.create(
+        engine="text-davinci-003",
+        prompt=prompt,
+        max_tokens=100
+    )
+    response_text = response.choices[0].text.strip()
 
+    # Print the response text for debugging
+    print(f"Response Text: {response_text}")
+
+    # Extract sentiment and trigger from response
+    sentiment_label = re.search(r'Sentiment:\s*(POSITIVE|NEGATIVE)', response_text).group(1)
+    trigger_text = re.search(r'Trigger:\s*(.*)', response_text).group(1)
+    
+    # Print extracted sentiment and trigger
+    print(f"Extracted Sentiment: {sentiment_label}")
+    print(f"Extracted Trigger: {trigger_text}")
+    
+    return sentiment_label, trigger_text
