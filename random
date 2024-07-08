@@ -1,3 +1,158 @@
+import os
+import pandas as pd
+import re
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+from transformers import pipeline
+from tqdm import tqdm
+import openai
+
+# Set proxy environment variables
+if "no_proxy" not in os.environ:
+    os.environ["no_proxy"] = ""
+if "jpmchase.net" not in os.environ["no_proxy"]:
+    os.environ["no_proxy"] = os.environ["no_proxy"] + ",.jpmchase.net"
+
+# Load data from Salesforce analytics
+df_salesforce = pd.read_excel('/mnt/data/Salesforce_Deals_Text_Analytics.xlsx')
+
+# View the shape of the dataframe
+print(df_salesforce.shape)
+
+# Step 1: Append all text columns into a single string variable
+df_salesforce['combined_text'] = df_salesforce[
+    ['record_comment_text', 'description_text', 'executive_summary_text', 'win_loss_reason_text', 'win_loss_comments_text']
+].apply(lambda x: ' '.join(x.dropna()), axis=1)
+
+# Preprocess the text
+def preprocess_text(text):
+    text = text.lower()  # Convert text to lowercase
+    text = re.sub(r'[^a-zA-Z\s]', '', text)  # Remove special characters and numbers
+    text = re.sub(r'\s+', ' ', text).strip()  # Remove extra whitespace
+    return text
+
+# Apply preprocessing
+df_salesforce['combined_text'] = df_salesforce['combined_text'].apply(preprocess_text)
+
+# Function to truncate text to a maximum of 4096 tokens
+def truncate_to_4096_tokens(text):
+    tokens = text.split()
+    if len(tokens) > 4096:
+        tokens = tokens[:4096]
+    return ' '.join(tokens)
+
+# Apply the truncation function to the 'combined_text' column
+df_salesforce['combined_text_truncated'] = df_salesforce['combined_text'].apply(truncate_to_4096_tokens)
+
+# View the shape of the dataframe after truncation
+print(df_salesforce.shape)
+
+# Load OpenAI API Key
+openai.api_key = 'YOUR_OPENAI_API_KEY'
+
+# Define the few-shot examples
+few_shot_examples = """
+Example 1:
+Text: "The client was very satisfied with the onboarding process and the service provided."
+Sentiment: POSITIVE
+Trigger: "onboarding process, service provided"
+
+Example 2:
+Text: "There were several issues with the service which led to dissatisfaction."
+Sentiment: NEGATIVE
+Trigger: "several issues with the service"
+
+Example 3:
+Text: "The integration was smooth and the client appreciated the prompt support."
+Sentiment: POSITIVE
+Trigger: "integration was smooth, prompt support"
+
+Example 4:
+Text: "The client was unhappy with the delays and lack of communication."
+Sentiment: NEGATIVE
+Trigger: "delays, lack of communication"
+"""
+
+# Function to get sentiment and triggers using OpenAI
+def analyze_text(text):
+    prompt = f"""
+    {few_shot_examples}
+    
+    Example:
+    Text: "{text}"
+    Sentiment:
+    Trigger:
+    """
+    response = openai.Completion.create(
+        engine="text-davinci-003",
+        prompt=prompt,
+        max_tokens=100
+    )
+    response_text = response.choices[0].text.strip()
+
+    # Extract sentiment and trigger from response
+    sentiment_label = re.search(r'Sentiment:\s*(POSITIVE|NEGATIVE)', response_text).group(1)
+    trigger_text = re.search(r'Trigger:\s*(.*)', response_text).group(1)
+    
+    return sentiment_label, trigger_text
+
+# Apply the sentiment and trigger analysis to each row
+tqdm.pandas()
+df_salesforce[['sentiment', 'trigger']] = df_salesforce['combined_text_truncated'].progress_apply(lambda x: pd.Series(analyze_text(x)))
+
+# Step 3: Filter cases for 'Closed Won' and extract triggers
+df_won = df_salesforce[df_salesforce['stage_name'] == 'Closed Won']
+
+# Step 4: Filter cases for 'Closed Lost' and extract triggers
+df_lost = df_salesforce[df_salesforce['stage_name'] == 'Closed Lost']
+
+# Step 5: Generate Word Clouds for 'Closed Won' and 'Closed Lost'
+won_text = ' '.join(df_won['trigger'])
+lost_text = ' '.join(df_lost['trigger'])
+
+wordcloud_won = WordCloud(width=800, height=400, background_color='white').generate(won_text)
+wordcloud_lost = WordCloud(width=800, height=400, background_color='white').generate(lost_text)
+
+# Display Word Clouds
+plt.figure(figsize=(10, 5))
+plt.subplot(1, 2, 1)
+plt.imshow(wordcloud_won, interpolation='bilinear')
+plt.title('Closed Won Deals Word Cloud')
+plt.axis('off')
+
+plt.subplot(1, 2, 2)
+plt.imshow(wordcloud_lost, interpolation='bilinear')
+plt.title('Closed Lost Deals Word Cloud')
+plt.axis('off')
+
+plt.show()
+
+# Step 6: Validate results on a representative sample
+sample_size = 1000
+df_sample_won = df_won.sample(min(sample_size, len(df_won)))
+df_sample_lost = df_lost.sample(min(sample_size, len(df_lost)))
+
+# Summarize triggers
+won_triggers = df_sample_won['trigger'].value_counts().head(10)
+lost_triggers = df_sample_lost['trigger'].value_counts().head(10)
+
+print("Top 10 Triggers for Closed Won Deals:")
+print(won_triggers)
+
+print("\nTop 10 Triggers for Closed Lost Deals:")
+print(lost_triggers)
+
+# Step 7: Refinement based on validation (this involves manual iteration and tuning)
+
+# Export the results
+df_won.to_excel('Won_Deals_Triggers.xlsx', index=False)
+df_lost.to_excel('Lost_Deals_Triggers.xlsx', index=False)
+
+
+
+
+
+-------------------------
 import pandas as pd
 import re
 import matplotlib.pyplot as plt
