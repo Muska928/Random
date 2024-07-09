@@ -1,4 +1,71 @@
-# Function to get sentiment and triggers using OpenAI
+import pandas as pd
+import re
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
+from tqdm import tqdm
+
+# Load data from Salesforce analytics
+df_salesforce = pd.read_excel('/mnt/data/Salesforce_Deals_Text_Analytics.xlsx')
+
+# Concatenate text columns into a single string variable
+df_salesforce['combined_text'] = df_salesforce[
+    ['record_comment_text', 'description_text', 'executive_summary_text', 'win_loss_reason_text', 'win_loss_comments_text']
+].apply(lambda x: ' '.join(x.dropna()), axis=1)
+
+# Preprocess the text
+def preprocess_text(text):
+    text = text.lower()  # Convert text to lowercase
+    text = re.sub(r'[^a-zA-Z\s]', '', text)  # Remove special characters and numbers
+    text = re.sub(r'\s+', ' ', text).strip()  # Remove extra whitespace
+    return text
+
+# Apply preprocessing
+df_salesforce['combined_text'] = df_salesforce['combined_text'].apply(preprocess_text)
+
+# Define Middle Office related keywords
+middle_office_keywords = ['service', 'onboarding']
+
+# Add Middle Office flag to the dataframe
+df_salesforce['middle_office_related'] = df_salesforce['combined_text'].apply(
+    lambda x: 'yes' if any(keyword in x.lower() for keyword in middle_office_keywords) else 'no'
+)
+
+# Filter out the middle office related deals
+df_middle_office = df_salesforce[df_salesforce['middle_office_related'] == 'yes']
+
+# Load Mistral model and tokenizer from the specified folder
+model_path = "./mistral"
+tokenizer = AutoTokenizer.from_pretrained(model_path)
+model = AutoModelForSequenceClassification.from_pretrained(model_path)
+
+# Sentiment analysis pipeline
+sentiment_pipeline = pipeline('sentiment-analysis', model=model, tokenizer=tokenizer)
+
+# Few-shot examples for sentiment and trigger extraction
+few_shot_examples = """
+Example 1:
+Text: "The client was very satisfied with the onboarding process and the service provided."
+Sentiment: POSITIVE
+Trigger: "onboarding process, service provided"
+
+Example 2:
+Text: "There were several issues with the service which led to dissatisfaction."
+Sentiment: NEGATIVE
+Trigger: "several issues with the service"
+
+Example 3:
+Text: "The integration was smooth and the client appreciated the prompt support."
+Sentiment: POSITIVE
+Trigger: "integration was smooth, prompt support"
+
+Example 4:
+Text: "The client was unhappy with the delays and lack of communication."
+Sentiment: NEGATIVE
+Trigger: "delays, lack of communication"
+"""
+
+# Function to get sentiment and triggers using few-shot prompting
 def analyze_text(text):
     prompt = f"""
     {few_shot_examples}
@@ -8,22 +75,56 @@ def analyze_text(text):
     Sentiment:
     Trigger:
     """
-    response = openai.Completion.create(
-        engine="text-davinci-003",
-        prompt=prompt,
-        max_tokens=100
-    )
-    response_text = response.choices[0].text.strip()
-
-    # Print the response text for debugging
-    print(f"Response Text: {response_text}")
+    # Get sentiment and triggers
+    response = sentiment_pipeline(prompt)
+    response_text = response[0]['generated_text']
 
     # Extract sentiment and trigger from response
     sentiment_label = re.search(r'Sentiment:\s*(POSITIVE|NEGATIVE)', response_text).group(1)
     trigger_text = re.search(r'Trigger:\s*(.*)', response_text).group(1)
     
-    # Print extracted sentiment and trigger
-    print(f"Extracted Sentiment: {sentiment_label}")
-    print(f"Extracted Trigger: {trigger_text}")
-    
     return sentiment_label, trigger_text
+
+# Apply the sentiment and trigger analysis to each row
+tqdm.pandas()
+df_salesforce[['sentiment', 'trigger']] = df_salesforce['combined_text'].progress_apply(lambda x: pd.Series(analyze_text(x)))
+
+# Filter cases for 'Closed Won' and 'Closed Lost'
+df_won = df_salesforce[df_salesforce['sentiment'] == 'POSITIVE']
+df_lost = df_salesforce[df_salesforce['sentiment'] == 'NEGATIVE']
+
+# Generate Word Clouds for 'Closed Won' and 'Closed Lost'
+won_text = ' '.join(df_won['combined_text'])
+lost_text = ' '.join(df_lost['combined_text'])
+
+wordcloud_won = WordCloud(width=800, height=400, background_color='white').generate(won_text)
+wordcloud_lost = WordCloud(width=800, height=400, background_color='white').generate(lost_text)
+
+# Display Word Clouds
+plt.figure(figsize=(10, 5))
+plt.subplot(1, 2, 1)
+plt.imshow(wordcloud_won, interpolation='bilinear')
+plt.title('Closed Won Deals Word Cloud')
+plt.axis('off')
+
+plt.subplot(1, 2, 2)
+plt.imshow(wordcloud_lost, interpolation='bilinear')
+plt.title('Closed Lost Deals Word Cloud')
+plt.axis('off')
+
+plt.show()
+
+# Validate and summarize
+sample_size = 1000
+df_sample_won = df_won.sample(min(sample_size, len(df_won)))
+df_sample_lost = df_lost.sample(min(sample_size, len(df_lost)))
+
+# Summarize triggers
+won_triggers = df_sample_won['trigger'].value_counts().head(10)
+lost_triggers = df_sample_lost['trigger'].value_counts().head(10)
+
+print("Top 10 Triggers for Closed Won Deals:")
+print(won_triggers)
+
+print("\nTop 10 Triggers for Closed Lost Deals:")
+print(lost_triggers)
