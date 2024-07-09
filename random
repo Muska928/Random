@@ -1,0 +1,198 @@
+import pandas as pd
+import re
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
+from tqdm import tqdm
+
+# Load data from Salesforce analytics
+df_salesforce = pd.read_excel('/mnt/data/Salesforce_Deals_Text_Analytics.xlsx')
+
+# Concatenate text columns into a single string variable
+text_columns = ['record_comment_text', 'description_text', 'executive_summary_text', 'win_loss_reason_text', 'win_loss_comments_text']
+df_salesforce['combined_text'] = df_salesforce[text_columns].astype(str).agg(' '.join, axis=1)
+
+# Preprocess the text
+def preprocess_text(text):
+    text = text.lower()  # Convert text to lowercase
+    text = re.sub(r'[^a-zA-Z\s]', '', text)  # Remove special characters and numbers
+    text = re.sub(r'\s+', ' ', text).strip()  # Remove extra whitespace
+    return text
+
+# Apply preprocessing
+df_salesforce['combined_text'] = df_salesforce['combined_text'].apply(preprocess_text)
+
+# Load Mistral model and tokenizer from the specified folder
+model_path = "./mistral"
+tokenizer = AutoTokenizer.from_pretrained(model_path)
+model = AutoModelForSequenceClassification.from_pretrained(model_path)
+
+# Sentiment analysis pipeline
+sentiment_pipeline = pipeline('sentiment-analysis', model=model, tokenizer=tokenizer, return_all_scores=True)
+
+# Few-shot examples for sentiment and trigger extraction
+few_shot_examples = """
+Example 1:
+Text: "The client was very satisfied with the onboarding process and the service provided."
+Sentiment: POSITIVE
+Trigger: "onboarding process, service provided"
+
+Example 2:
+Text: "There were several issues with the service which led to dissatisfaction."
+Sentiment: NEGATIVE
+Trigger: "several issues with the service"
+
+Example 3:
+Text: "The integration was smooth and the client appreciated the prompt support."
+Sentiment: POSITIVE
+Trigger: "integration was smooth, prompt support"
+
+Example 4:
+Text: "The client was unhappy with the delays and lack of communication."
+Sentiment: NEGATIVE
+Trigger: "delays, lack of communication"
+
+Example 5:
+Text: "The deal was cancelled due to budget constraints."
+Sentiment: CANCELLED
+Trigger: "budget constraints"
+
+Example 6:
+Text: "The client cancelled the contract because of changes in their strategy."
+Sentiment: CANCELLED
+Trigger: "changes in their strategy"
+"""
+
+# Function to get sentiment and triggers using few-shot prompting
+def analyze_text_few_shot(text):
+    prompt = f"""
+    {few_shot_examples}
+    
+    Example:
+    Text: "{text}"
+    Sentiment:
+    Trigger:
+    """
+    response = sentiment_pipeline(prompt)
+    response_text = response[0]['generated_text']
+
+    sentiment_label = re.search(r'Sentiment:\s*(POSITIVE|NEGATIVE|CANCELLED)', response_text).group(1)
+    trigger_text = re.search(r'Trigger:\s*(.*)', response_text).group(1)
+
+    score = next(item for item in response if item['label'] == sentiment_label)['score']
+
+    return sentiment_label, trigger_text, score
+
+# One-shot prompt template
+one_shot_template = """
+Text: "{text}"
+Sentiment:
+Trigger:
+"""
+
+# Function to get sentiment and triggers using one-shot prompting
+def analyze_text_one_shot(text):
+    prompt = one_shot_template.format(text=text)
+    response = sentiment_pipeline(prompt)
+    response_text = response[0]['generated_text']
+
+    sentiment_label = re.search(r'Sentiment:\s*(POSITIVE|NEGATIVE|CANCELLED)', response_text).group(1)
+    trigger_text = re.search(r'Trigger:\s*(.*)', response_text).group(1)
+
+    score = next(item for item in response if item['label'] == sentiment_label)['score']
+
+    return sentiment_label, trigger_text, score
+
+# Apply the sentiment and trigger analysis using few-shot prompting
+print("Applying few-shot prompting...")
+tqdm.pandas()
+df_salesforce[['sentiment_few_shot', 'trigger_few_shot', 'probability_few_shot']] = df_salesforce['combined_text'].progress_apply(lambda x: pd.Series(analyze_text_few_shot(x)))
+
+# Apply the sentiment and trigger analysis using one-shot prompting
+print("Applying one-shot prompting...")
+df_salesforce[['sentiment_one_shot', 'trigger_one_shot', 'probability_one_shot']] = df_salesforce['combined_text'].progress_apply(lambda x: pd.Series(analyze_text_one_shot(x)))
+
+# Filter cases for 'Closed Won', 'Closed Lost', and 'Cancelled' using the 'stage name' column
+df_won = df_salesforce[df_salesforce['stage_name'] == 'Closed Won']
+df_lost = df_salesforce[df_salesforce['stage_name'] == 'Closed Lost']
+df_cancelled = df_salesforce[df_salesforce['stage_name'] == 'Cancelled']
+
+# Generate Word Clouds for 'Closed Won', 'Closed Lost', and 'Cancelled' using few-shot results
+won_text_few_shot = ' '.join(df_won['combined_text'])
+lost_text_few_shot = ' '.join(df_lost['combined_text'])
+cancelled_text_few_shot = ' '.join(df_cancelled['combined_text'])
+
+wordcloud_won_few_shot = WordCloud(width=800, height=400, background_color='white').generate(won_text_few_shot)
+wordcloud_lost_few_shot = WordCloud(width=800, height=400, background_color='white').generate(lost_text_few_shot)
+wordcloud_cancelled_few_shot = WordCloud(width=800, height=400, background_color='white').generate(cancelled_text_few_shot)
+
+# Display Word Clouds for few-shot results
+plt.figure(figsize=(15, 5))
+plt.subplot(1, 3, 1)
+plt.imshow(wordcloud_won_few_shot, interpolation='bilinear')
+plt.title('Closed Won Deals Word Cloud (Few-Shot)')
+plt.axis('off')
+
+plt.subplot(1, 3, 2)
+plt.imshow(wordcloud_lost_few_shot, interpolation='bilinear')
+plt.title('Closed Lost Deals Word Cloud (Few-Shot)')
+plt.axis('off')
+
+plt.subplot(1, 3, 3)
+plt.imshow(wordcloud_cancelled_few_shot, interpolation='bilinear')
+plt.title('Cancelled Deals Word Cloud (Few-Shot)')
+plt.axis('off')
+
+plt.show()
+
+# Validate and summarize few-shot results
+sample_size = 1000
+df_sample_won_few_shot = df_won.sample(min(sample_size, len(df_won)))
+df_sample_lost_few_shot = df_lost.sample(min(sample_size, len(df_lost)))
+df_sample_cancelled_few_shot = df_cancelled.sample(min(sample_size, len(df_cancelled)))
+
+# Summarize triggers for few-shot results
+won_triggers_few_shot = df_sample_won_few_shot['trigger_few_shot'].value_counts().head(10)
+lost_triggers_few_shot = df_sample_lost_few_shot['trigger_few_shot'].value_counts().head(10)
+cancelled_triggers_few_shot = df_sample_cancelled_few_shot['trigger_few_shot'].value_counts().head(10)
+
+print("Top 10 Triggers for Closed Won Deals (Few-Shot):")
+print(won_triggers_few_shot)
+
+print("\nTop 10 Triggers for Closed Lost Deals (Few-Shot):")
+print(lost_triggers_few_shot)
+
+print("\nTop 10 Triggers for Cancelled Deals (Few-Shot):")
+print(cancelled_triggers_few_shot)
+
+# Generate Word Clouds for 'Closed Won', 'Closed Lost', and 'Cancelled' using one-shot results
+won_text_one_shot = ' '.join(df_won['combined_text'])
+lost_text_one_shot = ' '.join(df_lost['combined_text'])
+cancelled_text_one_shot = ' '.join(df_cancelled['combined_text'])
+
+wordcloud_won_one_shot = WordCloud(width=800, height=400, background_color='white').generate(won_text_one_shot)
+wordcloud_lost_one_shot = WordCloud(width=800, height=400, background_color='white').generate(lost_text_one_shot)
+wordcloud_cancelled_one_shot = WordCloud(width=800, height=400, background_color='white').generate(cancelled_text_one_shot)
+
+# Display Word Clouds for one-shot results
+plt.figure(figsize=(15, 5))
+plt.subplot(1, 3, 1)
+plt.imshow(wordcloud_won_one_shot, interpolation='bilinear')
+plt.title('Closed Won Deals Word Cloud (One-Shot)')
+plt.axis('off')
+
+plt.subplot(1, 3, 2)
+plt.imshow(wordcloud_lost_one_shot, interpolation='bilinear')
+plt.title('Closed Lost Deals Word Cloud (One-Shot)')
+plt.axis('off')
+
+plt.subplot(1, 3, 3)
+plt.imshow(wordcloud_cancelled_one_shot, interpolation='bilinear')
+plt.title('Cancelled Deals Word Cloud (One-Shot)')
+plt.axis('off')
+
+plt.show()
+
+# Validate and summarize one-shot results
+df_sample_won_one_shot = df_won.sample(min(sample_size, len(df_won)))
+df_sample_lost_one_shot = df_lost.sample(min
