@@ -1,0 +1,50 @@
+# Apply the sentiment and trigger analysis using one-shot prompting
+print("Applying one-shot prompting...")
+sentiments = []
+triggers = []
+probabilities = []
+lobs = []
+
+for text in tqdm(df_sample['combined_text']):
+    prompt = one_shot_template.format(text=text)
+    response = sentiment_pipeline(prompt)
+
+    # Extract generated text from response
+    generated_text = response[0]['generated_text'] if 'generated_text' in response[0] else ""
+
+    sentiment_label = re.search(r'Sentiment:\s*(POSITIVE|NEGATIVE|CANCELLED)', generated_text)
+    trigger_text = re.search(r'Trigger:\s*(.*)', generated_text)
+    lob_text = re.search(r'LOB:\s*(.*)', generated_text)
+
+    # Ensure that sentiment_label, trigger_text, and lob_text are found
+    if sentiment_label and trigger_text and lob_text:
+        sentiment_label = sentiment_label.group(1)
+        trigger_text = trigger_text.group(1)
+        lob_text = lob_text.group(1)
+
+        # Extract probabilities
+        scores = {label['label']: label['score'] for label in response[0]}
+        probability = scores[sentiment_label]
+
+        sentiments.append(sentiment_label)
+        triggers.append(trigger_text)
+        probabilities.append(probability)
+        lobs.append(lob_text)
+    else:
+        # Handle cases where sentiment, trigger, or LOB extraction fails
+        sentiments.append(None)
+        triggers.append(None)
+        probabilities.append(None)
+        lobs.append(None)
+
+df_sample['sentiment'] = sentiments
+df_sample['trigger'] = triggers
+df_sample['probability'] = probabilities
+df_sample['lob'] = lobs
+
+# Save the output to a CSV file
+output_file_path = '/mnt/data/Salesforce_Deals_Sentiment_Analysis_Sample_Output.csv'
+df_sample.to_csv(output_file_path, index=False)
+
+# Print a sample of the output in tabular form
+print(df_sample[['combined_text', 'sentiment', 'trigger', 'probability', 'lob']].head().to_markdown())
