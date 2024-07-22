@@ -1,5 +1,0 @@
-# Combine the results into a single column
-df_sample['final_response'] = results
-df_sample['all_information'] = df_sample['final_response'].apply(lambda x: 'LOB: ' + re.search(r'LOB: (.*?)\n', x).group(1) + 
-                                                               '\nSentiment: ' + re.search(r'Sentiment: (.*?)\n', x).group(1) + 
-                                                               '\nContent Retrieved: ' + re.search(r'Content Retrieved: (.*)', x).group(1))
