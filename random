@@ -1,0 +1,5 @@
+# Combine the results into separate columns
+df_sample['final_response'] = results
+df_sample['LOB'] = df_sample['final_response'].apply(lambda x: re.search(r'LOB: (.*?)\n', x).group(1) if re.search(r'LOB: (.*?)\n', x) else 'Not available')
+df_sample['Sentiment'] = df_sample['final_response'].apply(lambda x: re.search(r'Sentiment: (.*?)\n', x).group(1) if re.search(r'Sentiment: (.*?)\n', x) else 'Not available')
+df_sample['Content_Retrieved'] = df_sample['final_response'].apply(lambda x: re.search(r'Content Retrieved: (.*)', x).group(1) if re.search(r'Content Retrieved: (.*)', x) else 'Not available')
