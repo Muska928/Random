@@ -1,1 +1,3 @@
+# Sentiment analysis pipeline with the Mistral instruct model
+generation_pipeline = pipeline('text-generation', model=model, tokenizer=tokenizer, device=0 if torch.cuda.is_available() else -1)
 
