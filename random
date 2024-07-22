@@ -5,7 +5,6 @@ from tqdm import tqdm
 import torch
 from transformers import BitsAndBytesConfig
 
-
 # Concatenate text columns into a single string variable
 df_salesforce['combined_text'] = df_salesforce[
     ['record_comment_text', 'description_text', 'executive_summary_text', 'win_loss_reason_text', 'win_loss_comments_text']
@@ -64,7 +63,6 @@ model.gradient_checkpointing_enable()
 # Sentiment analysis pipeline with the Mistral instruct model
 generation_pipeline = pipeline('text-generation', model=model, tokenizer=tokenizer)  # No device argument here
 
-
 # Maximum length of input tokens
 max_input_length = 200
 
@@ -81,7 +79,14 @@ for i in tqdm(range(0, len(df_sample), batch_size), desc="Processing"):
     
     # Process batches asynchronously
     batch_responses = generation_pipeline(prompts, max_new_tokens=50, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
-    results.extend([response['generated_text'] for response in batch_responses])
+    
+    # Print batch_responses to understand its structure
+    print(batch_responses)
+    
+    # Extract generated text from batch_responses
+    for response in batch_responses:
+        generated_text = response[0]['generated_text'] if isinstance(response, list) and 'generated_text' in response[0] else response['generated_text']
+        results.append(generated_text)
 
 # Combine the results into a single column
 df_sample['final_response'] = results
