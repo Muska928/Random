@@ -1,0 +1,8 @@
+	2.	Model Selection:
+	•	Baseline Models: Start with simple models like NaiveDrift, NaiveMean, and NaiveSeasonal to establish a benchmark for forecast accuracy.
+	•	Classical Time Series Models: Use models like Exponential Smoothing and Theta to capture trends and seasonality in the data.
+	•	Advanced Statistical Models: Apply models such as TBATS and AutoARIMA for handling complex seasonal patterns and autoregressive components.
+	•	Machine Learning Models: Include models like Prophet for flexible seasonality and holiday effects, and LightGBM for leveraging machine learning techniques to improve prediction accuracy.
+	3.	Model Evaluation:
+	•	Performance Metrics: Evaluate each model using Mean Absolute Percentage Error (MAPE), Root Mean Squared Error (RMSE), and other relevant metrics to assess accuracy.
+	•	Cross-validation & Backtesting: Implement cross-validation and backtesting to test the model’s performance on unseen data, ensuring that it generalizes well.
