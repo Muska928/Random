@@ -1,0 +1,66 @@
+# Define the updated prompt template
+updated_prompt_template = """
+You are an AI tasked with verifying if the assigned topic name matches the content of the text. Additionally, classify the content into one of the following categories: Strong Client Relationship and Market Engagement, Effective Pricing and Profitability, Operational Excellence and Process Efficiency, Product and Service Delivery, or Innovative and Tailored Solutions.
+
+Here are the categories and their descriptions:
+1. Strong Client Relationship and Market Engagement: Deals won by fostering strong client relationships and market engagement.
+2. Effective Pricing and Profitability: Deals structured for profitability and competitive pricing.
+3. Operational Excellence and Process Efficiency: Deals secured through reliable and efficient processes.
+4. Product and Service Delivery: Deals won by meeting specific client needs with product or service offerings.
+5. Innovative and Tailored Solutions: Deals won through innovative and customized solutions.
+
+Given the following text, identify if the assigned topic name aligns with the content and categorize the deal:
+
+Assigned Topic Name: {topic_name}
+Text: {input_text}
+
+Provide your response in the following format:
+Topic Alignment: [Yes/No]
+Category: [Category Name]
+Explanation: [Brief explanation of why the category was chosen]
+"""
+
+# Generate the output
+results = []
+for i in tqdm(range(0, len(df_sample), batch_size), desc="Processing"):
+    batch_texts = df_sample['combined_text'].iloc[i:i+batch_size].tolist()
+    assigned_topics = df_sample['assigned_topic_name'].iloc[i:i+batch_size].tolist()  # Assuming you have this column
+
+    # Combine the assigned topic and text into the prompt
+    prompts = [updated_prompt_template.format(topic_name=topic, input_text=text) for topic, text in zip(assigned_topics, batch_texts)]
+    
+    # Process batches asynchronously
+    batch_responses = generation_pipeline(prompts, max_new_tokens=50, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
+    
+    # Extract generated text from batch_responses
+    for response in batch_responses:
+        if isinstance(response, list) and len(response) > 0 and 'generated_text' in response[0]:
+            generated_text = response[0]['generated_text']
+        elif 'generated_text' in response:
+            generated_text = response['generated_text']
+        else:
+            generated_text = "No valid response"
+        results.append(generated_text)
+
+# Combine the results into a single column
+df_sample['final_response'] = results
+
+# Extract the topic alignment, category, and explanation
+def extract_information(text):
+    topic_alignment_match = re.search(r'Topic Alignment: (.*?)\n', text)
+    category_match = re.search(r'Category: (.*?)\n', text)
+    explanation_match = re.search(r'Explanation: (.*)', text)
+
+    topic_alignment = topic_alignment_match.group(1) if topic_alignment_match else "Not available"
+    category = category_match.group(1) if category_match else "Not available"
+    explanation = explanation_match.group(1) if explanation_match else "Not available"
+
+    return f"Topic Alignment: {topic_alignment}, Category: {category}, Explanation: {explanation}"
+
+df_sample['all_information'] = df_sample['final_response'].apply(extract_information)
+
+# Save the results to a CSV file
+df_sample.to_csv('/mnt/data/Salesforce_Deals_Text_Analytics_Output.csv', index=False)
+
+# Display the DataFrame to verify results
+print(df_sample['all_information'])
