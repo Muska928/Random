@@ -1,0 +1,30 @@
+import pandas as pd
+import ipywidgets as widgets
+from IPython.display import display
+
+# Assuming df_sample is your DataFrame containing the final results
+# with 'all_information' as the key column
+
+# Display the entire DataFrame in a table format
+display(df_sample)
+
+# Create interactive widgets for filtering
+topic_filter = widgets.Text(value='', placeholder='Filter by Topic Alignment', description='Topic:')
+category_filter = widgets.Text(value='', placeholder='Filter by Category', description='Category:')
+explanation_filter = widgets.Text(value='', placeholder='Filter by Explanation', description='Explanation:')
+
+# Function to filter and display the DataFrame based on the widget inputs
+def filter_dataframe(topic, category, explanation):
+    filtered_df = df_sample.copy()
+    
+    if topic:
+        filtered_df = filtered_df[filtered_df['all_information'].str.contains(f"Topic Alignment: {topic}", case=False)]
+    if category:
+        filtered_df = filtered_df[filtered_df['all_information'].str.contains(f"Category: {category}", case=False)]
+    if explanation:
+        filtered_df = filtered_df[filtered_df['all_information'].str.contains(f"Explanation: {explanation}", case=False)]
+    
+    display(filtered_df)
+
+# Create an interactive output that responds to widget changes
+widgets.interactive(filter_dataframe, topic=topic_filter, category=category_filter, explanation=explanation_filter)
