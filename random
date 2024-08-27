@@ -1,0 +1,21 @@
+# Install required libraries (uncomment if you haven't installed them already)
+# !pip install pandas openpyxl ipywidgets qgrid
+
+import pandas as pd
+import qgrid
+
+# Step 1: Load the Excel file into a pandas DataFrame
+df = pd.read_excel('/path_to_file/Salesforce_Deals_Analysis.xlsx')
+
+# Step 2: Display the DataFrame using qgrid for interactive filtering and sorting
+qgrid_widget = qgrid.show_grid(df, show_toolbar=True)
+display(qgrid_widget)
+
+# Step 3: (Optional) Perform operations on the DataFrame (e.g., filtering)
+# Example: Filter DataFrame to show only rows where 'Middle Office Related' is 'Yes'
+# filtered_df = df[df['Middle Office Related'] == 'Yes']
+
+# Step 4: Save the modified DataFrame to a new Excel file
+# Save changes back from qgrid (if you edit in the grid)
+df_modified = qgrid_widget.get_changed_df()
+df_modified.to_excel('/path_to_save/Modified_Salesforce_Deals_Analysis.xlsx', index=False)
