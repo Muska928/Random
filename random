@@ -1,0 +1,36 @@
+import pandas as pd
+import ipywidgets as widgets
+from IPython.display import display
+
+# Adjust pandas options to display the full text
+pd.set_option('display.max_colwidth', None)  # Ensures no truncation of text in columns
+
+# Assuming df_sample is your DataFrame containing the final results
+# Select the specific columns you want to display
+selected_columns = df_sample[['combined_text', 'assigned_topic_name', 'main_topic', 'middle_office_related', 'all_information']]
+
+# Create dropdown widgets for filtering based on unique values in each column
+filters = {col: widgets.Dropdown(options=['All'] + sorted(selected_columns[col].dropna().unique().tolist()), description=col, style={'description_width': 'initial'}) for col in selected_columns.columns}
+
+# Function to filter the DataFrame based on dropdown selections
+def filter_dataframe(**kwargs):
+    filtered_df = selected_columns.copy()
+    for col, value in kwargs.items():
+        if value != 'All':
+            filtered_df = filtered_df[filtered_df[col] == value]
+    
+    # Set row height (by setting padding or min-height to simulate row size)
+    styled_df = filtered_df.style.set_properties(**{
+        'white-space': 'pre-wrap',
+        'word-wrap': 'break-word',
+        'padding': '10px 0',  # Adds padding to increase row height
+        'line-height': '1.5',  # Increases space between lines of text
+        'vertical-align': 'top',  # Ensures text starts at the top of the cell
+    })
+    display(styled_df)
+
+# Create an interactive widget for filtering
+interactive_filter = widgets.interactive(filter_dataframe, **filters)
+
+# Display the dropdowns and the filtered DataFrame
+display(interactive_filter)
