@@ -1,0 +1,113 @@
+import pandas as pd
+import time
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from tqdm import tqdm
+import torch
+from transformers import BitsAndBytesConfig
+
+# Function to truncate text to a maximum of 4096 tokens
+def truncate_to_4096_tokens(text):
+    tokens = text.split()
+    if len(tokens) > 4096:
+        tokens = tokens[:4096]
+    return ' '.join(tokens)
+
+# Define the function to extract information from the generated text
+def extract_information(text):
+    lines = text.split("\n")
+    topic_alignment = "Not available"
+    category = "Not available"
+    explanation = "Not available"
+    
+    for line in lines:
+        if line.startswith("Topic Alignment:"):
+            topic_alignment = line.split(": ")[1]
+        elif line.startswith("Category:"):
+            category = line.split(": ")[1]
+        elif line.startswith("Explanation:"):
+            explanation = line.split(": ")[1]
+    
+    return topic_alignment, category, explanation
+
+# Load the dataset
+df_salesforce = pd.read_e
+
+# Sample the first 1,000 records
+df_sample = df_salesforce.head(1000)
+
+# Apply the truncation to the 'combined_text' column
+df_sample['combined_text'] = df_sample['combined_text'].apply(truncate_to_4096_tokens)
+
+# Load Mistral model and tokenizer
+model_path = "mistral/Mistral-7B-Instruct-v0.2"
+tokenizer = AutoTokenizer.from_pretrained(
+    model_path,
+    trust_remote_code=True,
+    padding_side="left",
+    use_fast=True,
+    add_bos_token=True,
+    add_eos_token=True
+)
+tokenizer.pad_token = tokenizer.eos_token
+
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16
+)
+
+model = AutoModelForCausalLM.from_pretrained(
+    model_path,
+    quantization_config=bnb_config,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",  # Automatically map to available devices
+    trust_remote_code=True,
+)
+
+model.config.use_cache = False
+model.config.pretraining_tp = 1
+model.gradient_checkpointing_enable()
+
+generation_pipeline = pipeline('text-generation', model=model, tokenizer=tokenizer, device=0)
+
+
+# Function to process the sample
+def process_sample(df_sample, batch_size=64):
+    results = []
+    
+    for i in tqdm(range(0, len(df_sample), batch_size), desc="Processing sample"):
+        batch_texts = df_sample['combined_text'].iloc[i:i+batch_size].tolist()
+        assigned_topics = df_sample['assigned_topic_name'].iloc[i:i+batch_size].tolist()
+        
+        # Combine the assigned topic and text into the prompt
+        prompts = [updated_prompt_template.format(topic_name=topic, input_text=text) for topic, text in zip(assigned_topics, batch_texts)]
+        
+        # Process batches asynchronously
+        batch_responses = generation_pipeline(prompts, max_new_tokens=50, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
+        
+        # Extract generated text from batch_responses
+        for response in batch_responses:
+            if isinstance(response, list) and len(response) > 0 and 'generated_text' in response[0]:
+                generated_text = response[0]['generated_text']
+            elif 'generated_text' in response:
+                generated_text = response['generated_text']
+            else:
+                generated_text = "No valid response"
+            results.append(generated_text)
+    
+    # Combine results with the sample
+    df_sample['final_response'] = results
+    df_sample[['topic_alignment', 'category', 'explanation']] = df_sample['final_response'].apply(lambda x: pd.Series(extract_information(x)))
+    
+    # Print the sample results (or save them to a file)
+    print(df_sample[['topic_alignment', 'category', 'explanation']].head())
+
+# Measure the time taken for the sample
+start_time = time.time()
+process_sample(df_sample)
+end_time = time.time()
+
+# Calculate the time taken
+time_taken = end_time - start_time
+print(f"Time taken for 1,000 records: {time_taken} seconds")
