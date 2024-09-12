@@ -1,0 +1,18 @@
+Copy code
+# 4. Save the datasets to separate files
+rst_eci_dataset.to_csv('rst_eci_dataset.csv', index=False)  # Save RST data
+non_rst_dataset.to_csv('non_rst_eci_dataset.csv', index=False)  # Save non-RST data
+
+# 5. Count word tokens for each row before processing and append this to non-RST dataset
+non_rst_dataset = non_rst_dataset.copy()  # Ensure you're working on a copy
+non_rst_dataset['token_count'] = non_rst_dataset['combined_text'].apply(lambda x: len(x.split()))
+
+# Save the updated non-RST dataset with token count
+non_rst_dataset.to_csv('non_rst_eci_with_token_count.csv', index=False)
+
+# 6. Perform topic modeling on rows with more than 3 word tokens in non-RST data
+non_rst_gt_3_tokens = non_rst_dataset.loc[non_rst_dataset['token_count'] > 3].copy()
+
+# Preprocessing text columns for topic modeling
+non_rst_gt_3_tokens['processed_text'] = non_rst_gt_3_tokens['combined_text'].map(preprocess)
+processed_texts = non_rst_gt_3_tokens['processed_text'].tolist()
