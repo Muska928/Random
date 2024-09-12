@@ -1,0 +1,10 @@
+import pyLDAvis
+import pyLDAvis.gensim_models as gensimvis
+
+# Generate the pyLDAvis visualization
+vis_data = gensimvis.prepare(optimal_model, corpus, dictionary)
+
+# Save the visualization as an HTML file
+pyLDAvis.save_html(vis_data, 'lda_visualization.html')
+
+print("PyLDAvis visualization saved as 'lda_visualization.html'")
