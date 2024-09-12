@@ -1,0 +1,40 @@
+import pyLDAvis
+import pyLDAvis.gensim_models as gensimvis
+
+# Generate the pyLDAvis visualization
+vis_data = gensimvis.prepare(optimal_model, corpus, dictionary)
+
+# Print the 'topic_info' DataFrame to check its structure
+print("Topic Info DataFrame Structure:")
+print(vis_data.topic_info.head())  # Show the first few rows of the topic_info DataFrame
+
+# Extract topic proportions from the vis_data object
+topic_proportions = vis_data.topic_info.loc[vis_data.topic_info['Category'] == 'Topic', 'Freq'].values / 100
+
+# Print the proportions for each topic
+print("Topic Proportions:")
+for idx, proportion in enumerate(topic_proportions):
+    print(f"Topic {idx}: {proportion:.4f}")
+
+# Classify topics by percentage ranges
+topic_classifications = {
+    "10% (largest circle)": [],
+    "5% (medium circle)": [],
+    "2% (smallest circle)": []
+}
+
+# Classify topics based on their proportions
+for idx, proportion in enumerate(topic_proportions):
+    if proportion >= 0.09:  # 10% threshold
+        topic_classifications["10% (largest circle)"].append(f"Topic {idx}")
+    elif 0.04 <= proportion < 0.09:  # 5% threshold
+        topic_classifications["5% (medium circle)"].append(f"Topic {idx}")
+    elif proportion < 0.04:  # 2% threshold
+        topic_classifications["2% (smallest circle)"].append(f"Topic {idx}")
+
+# Print classified topics
+for key, value in topic_classifications.items():
+    print(f"{key}: {', '.join(value)}")
+
+# Visualize the pyLDAvis output (in a Jupyter Notebook, for example)
+pyLDAvis.display(vis_data)
