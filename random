@@ -1,0 +1,50 @@
+import pyLDAvis
+import pyLDAvis.gensim_models as gensimvis
+
+# Generate the pyLDAvis visualization
+vis_data = gensimvis.prepare(optimal_model, corpus, dictionary)
+
+# Filter out only the rows where 'Category' is actually a topic (e.g., 'Topic1', 'Topic2', ..., 'Topic14')
+topic_categories = [f"Topic{i+1}" for i in range(optimal_model.num_topics)]  # Generates 'Topic1', 'Topic2', ..., 'Topic14'
+topic_proportions = vis_data.topic_info.loc[vis_data.topic_info['Category'].isin(topic_categories), ['Category', 'Freq']]
+
+# Normalize the frequencies to get percentages
+total_freq = topic_proportions['Freq'].sum()
+topic_proportions['Freq'] = (topic_proportions['Freq'] / total_freq) * 100  # Convert to percentage
+
+# Remove duplicates if any exist
+topic_proportions = topic_proportions.drop_duplicates(subset=['Category'])
+
+# Sort topics by their proportions
+sorted_topics = topic_proportions.sort_values(by='Freq', ascending=False)
+
+# Print the topic proportions in a clean format
+print("Normalized Topic Proportions:")
+for idx, row in sorted_topics.iterrows():
+    print(f"{row['Category']}: {row['Freq']:.2f}%")
+
+# Classify topics by percentage ranges
+topic_classifications = {
+    "10% (largest circle)": [],
+    "5% (medium circle)": [],
+    "2% (smallest circle)": []
+}
+
+# Classify topics based on their proportions
+for idx, row in sorted_topics.iterrows():
+    proportion = row['Freq'] / 100
+    if proportion >= 0.09:  # 10% threshold
+        topic_classifications["10% (largest circle)"].append(row['Category'])
+    elif 0.04 <= proportion < 0.09:  # 5% threshold
+        topic_classifications["5% (medium circle)"].append(row['Category'])
+    elif proportion < 0.04:  # 2% threshold
+        topic_classifications["2% (smallest circle)"].append(row['Category'])
+
+# Print classified topics in a cleaner format, with a limit for each category
+for key, value in topic_classifications.items():
+    print(f"{key} (showing up to 10 topics): {', '.join(value[:10])}")
+    if len(value) > 10:
+        print(f"...and {len(value) - 10} more topics")
+
+# Visualize the pyLDAvis output (in a Jupyter Notebook, for example)
+pyLDAvis.display(vis_data)
