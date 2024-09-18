@@ -7,6 +7,7 @@ import gensim
 
 # Load Spacy model (without custom stopwords)
 nlp = spacy.load('en_core_web_md', disable=['parser', 'ner'])
+nlp.max_length = 2000000  # Increase SpaCy's max_length to handle larger texts
 
 # Contractions and abbreviations mapping
 contractions = {
@@ -26,6 +27,16 @@ def expand_contractions(text):
     for contraction, expansion in contractions.items():
         text = re.sub(r"\b" + contraction + r"\b", expansion, text)
     return text
+
+# Function to preprocess text in chunks
+def process_text_in_chunks(text, nlp, chunk_size=100000):
+    """Process text in chunks to avoid exceeding SpaCy's max length"""
+    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+    tokens = []
+    for chunk in chunks:
+        doc = nlp(chunk)
+        tokens.extend([token.lemma_ for token in doc if not token.is_stop and not token.is_punct and len(token.lemma_) > 2])
+    return tokens
 
 # Function to preprocess text and remove rare words
 def preprocess(document, word_freqs, rare_threshold):
@@ -79,7 +90,11 @@ df_salesforce['combined_text'] = df_salesforce[['record_comment_text',
 
 # First pass to calculate word frequencies across the entire dataset
 all_text = ' '.join(df_salesforce['combined_text'].tolist())
-all_tokens = [token.lemma_ for token in nlp(all_text) if not token.is_stop and not token.is_punct and len(token.lemma_) > 2]
+
+# Process the text in chunks to avoid length issues
+all_tokens = process_text_in_chunks(all_text, nlp)
+
+# Continue with the rest of your analysis using all_tokens
 word_freqs = Counter(all_tokens)
 
 # Define a threshold for rare words (e.g., words that occur fewer than 5 times)
