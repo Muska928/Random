@@ -1,0 +1,12 @@
+multi_word_phrases = {
+    "account opening": ["account open", "open account", "account opening"],
+    "client acquisition": ["acquired new client", "acquiring new clients"],
+    "new account": ["account new", "open new account"],
+    "client request": ["request client"],
+    "market disruption": ["disruption market"],
+    "new client": ["client new"],
+    "commercial card": ["card commercial"],
+    "bb transfer": ["transfer bb"],
+    "core cash": ["cash core"],
+    "cash liquidity": ["liquidity cash"],
+}
