@@ -1,0 +1,56 @@
+# Apply preprocessing to Non-RST data using .loc to avoid the SettingWithCopyWarning
+non_rst_data.loc[:, 'processed_text'] = non_rst_data['combined_text'].apply(full_preprocess)
+
+# Print first 5 processed Non-RST records
+print("\nProcessed Non-RST Deals (first 5 rows):\n", non_rst_data[['combined_text', 'processed_text']].head())
+
+
+# Function to get n-gram frequencies
+def get_ngram_freqs(tokens_list, n=1):
+    """
+    Given a list of tokens (processed text), return the frequency of unigrams, bigrams, trigrams, etc.
+    :param tokens_list: List of tokenized words
+    :param n: N-gram size (1=unigrams, 2=bigrams, 3=trigrams)
+    :return: Top 20 most frequent n-grams with their counts
+    """
+    ngrams = zip(*[tokens_list[i:] for i in range(n)])
+    return Counter([' '.join(ngram) for ngram in ngrams]).most_common(20)
+
+# Function to tokenize the processed text for N-gram analysis
+def tokenize_text(text):
+    return text.split()
+
+# Get all tokens from the processed Non-RST deals
+all_tokens = [token for text in non_rst_data['processed_text'] for token in tokenize_text(text)]
+
+# Get Unigrams, Bigrams, Trigrams frequencies
+unigram_freq = get_ngram_freqs(all_tokens, n=1)
+bigram_freq = get_ngram_freqs(all_tokens, n=2)
+trigram_freq = get_ngram_freqs(all_tokens, n=3)
+
+# Function to display and plot n-grams
+def display_ngrams(ngram_freq, title):
+    # Create a DataFrame to display as a table
+    ngram_df = pd.DataFrame(ngram_freq, columns=['ngram', 'frequency'])
+    
+    # Print frequency table
+    print(f"\n{'='*40}")
+    print(f"{title} Frequency Table:")
+    print(ngram_df.to_string(index=False))
+    print(f"{'='*40}")
+    
+    # Plot the top 20 n-grams using Seaborn
+    plt.figure(figsize=(12, 8))
+    sns.barplot(x='ngram', y='frequency', data=ngram_df, palette='coolwarm')
+    plt.xticks(rotation=45, ha='right', fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.title(f'Top 20 {title}', fontsize=16, weight='bold')
+    plt.xlabel('N-gram', fontsize=14, weight='bold')
+    plt.ylabel('Frequency', fontsize=14, weight='bold')
+    plt.tight_layout()
+    plt.show()
+
+# Display and plot unigrams, bigrams, and trigrams for Non-RST Deals
+display_ngrams(unigram_freq, 'Unigrams (Non-RST)')
+display_ngrams(bigram_freq, 'Bigrams (Non-RST)')
+display_ngrams(trigram_freq, 'Trigrams (Non-RST)')
