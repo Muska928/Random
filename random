@@ -1,0 +1,70 @@
+# Function to remove unwanted characters like `--`, `---`, and empty rows
+def clean_empty_rows_and_chars(text):
+    # Remove any standalone `--`, `---` or other unwanted filler characters
+    text = re.sub(r'\b--+\b', '', text)
+    # Remove extra whitespaces
+    text = ' '.join(text.split())
+    return text
+
+text = clean_empty_rows_and_chars(text)  # Step 8: Remove empty rows and unwanted characters (like '--')
+
+xtra_stopwords = set(['d', 'ir', '--', '---',
+
+# Function to display and plot n-grams for Non-RST data, including a frequency sum
+def display_ngrams(ngram_freq, title):
+    ngram_df = pd.DataFrame(ngram_freq, columns=['ngram', 'frequency'])
+    
+    # Calculate the total frequency sum
+    frequency_sum = ngram_df['frequency'].sum()
+    
+    # Print frequency table
+    print(f"\n{title} Frequency Table (Non-RST):")
+    print(ngram_df.to_string(index=False))
+    print(f"\nTotal Frequency Sum: {frequency_sum}")  # Print the sum of frequencies
+
+    # Plot the n-grams
+    plt.figure(figsize=(12, 8))
+    sns.barplot(x='ngram', y='frequency', data=ngram_df, palette='coolwarm')
+    
+    # Add frequency numbers on top of bars
+    for index, value in enumerate(ngram_df['frequency']):
+        plt.text(index, value, str(value), ha='center', va='bottom', fontsize=10)
+
+    plt.xticks(rotation=45, ha='right', fontsize=12)
+    plt.title(f'Top 30 {title} (Non-RST)', fontsize=16, weight='bold')
+    plt.tight_layout()
+    plt.show()
+
+    # Optionally return the total sum if needed elsewhere
+    return frequency_sum
+
+
+# ---- N-gram Frequency and Plotting (Non-RST Data) ----
+
+# Filter Non-RST data
+non_rst_data = df_salesforce[df_salesforce['account_eci'] != 'RST']
+
+# Apply full preprocessing to Non-RST data
+non_rst_data['processed_text'] = non_rst_data['combined_text'].apply(full_preprocess)
+
+# Tokenize the processed text
+def tokenize_text(text):
+    return text.split()
+
+# Get all tokens from the processed Non-RST deals
+all_tokens_non_rst = [token for text in non_rst_data['processed_text'] for token in tokenize_text(text)]
+
+# Get Unigrams, Bigrams, Trigrams frequencies for Non-RST data
+unigram_freq_non_rst = get_ngram_freqs(all_tokens_non_rst, n=1)
+bigram_freq_non_rst = get_ngram_freqs(all_tokens_non_rst, n=2)
+trigram_freq_non_rst = get_ngram_freqs(all_tokens_non_rst, n=3)
+
+# Display and plot unigrams, bigrams, trigrams for Non-RST deals
+unigram_sum = display_ngrams(unigram_freq_non_rst, 'Unigrams')
+bigram_sum = display_ngrams(bigram_freq_non_rst, 'Bigrams')
+trigram_sum = display_ngrams(trigram_freq_non_rst, 'Trigrams')
+
+# Optionally print total sums of all n-grams
+print(f"\nTotal Unigram Sum: {unigram_sum}")
+print(f"Total Bigram Sum: {bigram_sum}")
+print(f"Total Trigram Sum: {trigram_sum}")
