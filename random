@@ -1,0 +1,29 @@
+# ----- Deals Overview -----
+
+print("\n==== DEALS OVERVIEW ====\n")
+
+# 1. Total Count of Deals
+total_deal_count = len(df_salesforce)
+print(f"Total Count of Deals: {total_deal_count}")
+
+# 2. Count of RST Deals
+rst_deal_count = len(df_salesforce[df_salesforce['account_eci'] == 'RST'])
+print(f"Count of RST Deals: {rst_deal_count}")
+
+# 3. Count of Non-RST Deals
+non_rst_deal_count = len(df_salesforce[df_salesforce['account_eci'] != 'RST'])
+print(f"Count of Non-RST Deals: {non_rst_deal_count}")
+
+# 4. Count of Deals by Win/Loss Reason
+win_loss_reason_counts = df_salesforce['win_loss_reason_text'].value_counts()
+print("\nCount of Deals by Win/Loss Reason:")
+print(win_loss_reason_counts)
+
+# Filter Non-RST data
+non_rst_data = df_salesforce[df_salesforce['account_eci'] != 'RST']
+
+# Apply preprocessing to Non-RST data
+non_rst_data['processed_text'] = non_rst_data['combined_text'].apply(full_preprocess)
+
+# Print first 5 processed Non-RST records
+print("\nProcessed Non-RST Deals (first 5 rows):\n", non_rst_data[['combined_text', 'processed_text']].head())
