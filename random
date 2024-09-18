@@ -1,0 +1,40 @@
+# ---- N-gram Frequency and Plotting ----
+
+# Apply preprocessing to Non-RST data
+non_rst_data = df_salesforce[df_salesforce['account_eci'] != 'RST']
+non_rst_data.loc[:, 'processed_text'] = non_rst_data['combined_text'].apply(full_preprocess)
+
+# Tokenize the processed text
+def tokenize_text(text):
+    return text.split()
+
+# Get all tokens from the processed Non-RST deals
+all_tokens = [token for text in non_rst_data['processed_text'] for token in tokenize_text(text)]
+
+# Function to get n-gram frequency
+def get_ngram_freqs(tokens_list, n=1):
+    ngrams = zip(*[tokens_list[i:] for i in range(n)])
+    return Counter([' '.join(ngram) for ngram in ngrams]).most_common(30)
+
+# Function to display and plot n-grams
+def display_ngrams(ngram_freq, title):
+    ngram_df = pd.DataFrame(ngram_freq, columns=['ngram', 'frequency'])
+    print(f"\n{title} Frequency Table:")
+    print(ngram_df.to_string(index=False))
+
+    plt.figure(figsize=(12, 8))
+    sns.barplot(x='ngram', y='frequency', data=ngram_df, palette='coolwarm')
+    plt.xticks(rotation=45, ha='right', fontsize=12)
+    plt.title(f'Top 30 {title}', fontsize=16, weight='bold')
+    plt.tight_layout()
+    plt.show()
+
+# Get Unigrams, Bigrams, Trigrams frequencies
+unigram_freq = get_ngram_freqs(all_tokens, n=1)
+bigram_freq = get_ngram_freqs(all_tokens, n=2)
+trigram_freq = get_ngram_freqs(all_tokens, n=3)
+
+# Display and plot unigrams, bigrams, trigrams for Non-RST Deals
+display_ngrams(unigram_freq, 'Unigrams')
+display_ngrams(bigram_freq, 'Bigrams')
+display_ngrams(trigram_freq, 'Trigrams')
