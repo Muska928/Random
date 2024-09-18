@@ -1,7 +1,0 @@
-# Standardize similar phrases before bigram creation
-def normalize_phrases(text):
-    text = re.sub(r'\bopen account\b', 'account open', text)
-    text = re.sub(r'\baccount opening\b', 'account open', text)
-    return text
-# Apply text normalization to standardize similar phrases
-df_salesforce['combined_text'] = df_salesforce['combined_text'].apply(normalize_phrases)
