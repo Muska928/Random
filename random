@@ -1,0 +1,193 @@
+import pandas as pd
+import spacy
+from collections import Counter
+import matplotlib.pyplot as plt
+import seaborn as sns
+import re
+import gensim
+import pyLDAvis.gensim_models as gensimvis
+import pyLDAvis
+
+# Load Spacy model (without custom stopwords)
+nlp = spacy.load('en_core_web_md', disable=['parser', 'ner'])
+
+# Function to preprocess text
+def preprocess(document):
+    document = document.lower()
+    document = re.sub(r'[^a-zA-Z\s]', '', document)
+    document = re.sub(r'\s+', ' ', document).strip()
+    doc = nlp(document)
+    words = [token.lemma_ for token in doc if not token.is_stop and not token.is_punct and len(token.lemma_) > 2]
+    return words
+
+# Function to get n-gram frequency
+def get_ngram_freqs(tokens_list, n=1):
+    if n == 1:
+        return Counter(tokens_list).most_common(20)
+    else:
+        ngrams = zip(*[tokens_list[i:] for i in range(n)])
+        return Counter([' '.join(ngram) for ngram in ngrams]).most_common(20)
+
+# Function to print frequency table and plot n-grams
+def display_ngrams(ngram_freq, title):
+    # Create a DataFrame to display as a table
+    ngram_df = pd.DataFrame(ngram_freq, columns=['ngram', 'frequency'])
+    
+    # Print frequency table
+    print(f"\n{'='*40}")
+    print(f"{title} Frequency Table:")
+    print(ngram_df.to_string(index=False))
+    print(f"{'='*40}")
+    
+    # Plot the top 20 n-grams using Seaborn
+    plt.figure(figsize=(12, 8))
+    sns.barplot(x='ngram', y='frequency', data=ngram_df, palette='coolwarm')
+    plt.xticks(rotation=45, ha='right', fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.title(f'Top 20 {title}', fontsize=16, weight='bold')
+    plt.xlabel('N-gram', fontsize=14, weight='bold')
+    plt.ylabel('Frequency', fontsize=14, weight='bold')
+    
+    # Add data labels for each bar
+    for index, value in enumerate(ngram_df['frequency']):
+        plt.text(index, value + 1, str(value), ha='center', fontsize=12)
+
+    plt.tight_layout()
+    plt.show()
+
+# Function to analyze and display n-grams for each dataset
+def analyze_ngrams(df_subset, title):
+    all_tokens = [token for sublist in df_subset['processed_text'] for token in sublist]
+    
+    print(f"\n--- {title} ---\n")
+    
+    # Unigrams
+    unigram_freq = get_ngram_freqs(all_tokens, n=1)
+    display_ngrams(unigram_freq, title=f'Unigrams for {title}')
+    
+    # Bigrams
+    bigram_freq = get_ngram_freqs(all_tokens, n=2)
+    display_ngrams(bigram_freq, title=f'Bigrams for {title}')
+    
+    # Trigrams
+    trigram_freq = get_ngram_freqs(all_tokens, n=3)
+    display_ngrams(trigram_freq, title=f'Trigrams for {title}')
+    
+    # Four-Grams
+    fourgram_freq = get_ngram_freqs(all_tokens, n=4)
+    display_ngrams(fourgram_freq, title=f'Four-Grams for {title}')
+
+# Read data from Salesforce analytics
+df_salesforce = pd.read_excel('Data/exclude_won_rst.xlsx')
+
+# Concatenate text columns into a single string variable
+df_salesforce['combined_text'] = df_salesforce[['record_comment_text', 
+                                                'executive_summary_text', 
+                                                'win_loss_reason_text', 
+                                                'win_loss_comments_text']].apply(lambda x: ' '.join(x.dropna()), axis=1)
+
+# Preprocess the combined text
+df_salesforce['processed_text'] = df_salesforce['combined_text'].apply(preprocess)
+
+# Token count for each row
+df_salesforce['token_count'] = df_salesforce['processed_text'].apply(len)
+
+# Filter for Non-RST Data with Token Length >= 4
+non_rst_ge_4_data = df_salesforce[(df_salesforce['account_eci'] != 'RST') & (df_salesforce['token_count'] >= 4)]
+print(f"Total Non-RST Data with Token Length >= 4: {len(non_rst_ge_4_data)}")
+
+# N-gram analysis for Non-RST Data with Token Length >= 4
+analyze_ngrams(non_rst_ge_4_data, 'Non-RST Data (Token Length >= 4)')
+
+# Perform LDA topic modeling on Non-RST Data with Token Length >= 4
+processed_texts = non_rst_ge_4_data['processed_text'].tolist()
+
+# Building bi-gram and tri-gram models
+bigram = gensim.models.Phrases(processed_texts, min_count=10)  # Min count increased for bigrams
+trigram = gensim.models.Phrases(bigram[processed_texts], min_count=10)  # Add trigram modeling
+
+# Add bigrams and trigrams to the processed texts
+for idx in range(len(processed_texts)):
+    for token in trigram[bigram[processed_texts[idx]]]:
+        if '_' in token:
+            processed_texts[idx].append(token)
+
+# Creating dictionary
+dictionary = gensim.corpora.Dictionary(processed_texts)
+
+# Filtering dictionary
+dictionary.filter_extremes(no_below=int(len(processed_texts) * 0.01), no_above=0.5)
+
+# Creating the corpus
+corpus = [dictionary.doc2bow(text) for text in processed_texts]
+
+# Compute coherence values for different numbers of topics using grid search
+def compute_coherence_values(dictionary, corpus, texts, limit, start=2, step=1):
+    coherence_values = []
+    model_list = []
+    for num_topics in range(start, limit, step):
+        model = gensim.models.LdaMulticore(
+            corpus=corpus,
+            num_topics=num_topics,
+            id2word=dictionary,
+            passes=20,  # Increased number of passes
+            alpha='symmetric',  # Changed to 'symmetric'
+            eta='symmetric',  # Changed to 'symmetric'
+            workers=2,
+            random_state=5
+        )
+        model_list.append(model)
+        coherence_model = gensim.models.CoherenceModel(
+            model=model,
+            texts=texts,
+            dictionary=dictionary,
+            coherence='c_v'
+        )
+        coherence_values.append(coherence_model.get_coherence())
+    return model_list, coherence_values
+
+# Run the grid search for optimal number of topics
+model_list, coherence_values = compute_coherence_values(dictionary, corpus, processed_texts, limit=20, start=2, step=2)
+
+# Find the model with the highest coherence value
+optimal_model = model_list[coherence_values.index(max(coherence_values))]
+
+# Extracting top words from each topic
+def extract_top_words(model, num_words):
+    top_words_per_topic = []
+    for topic_id in range(model.num_topics):
+        top_words = model.show_topic(topic_id, num_words)
+        top_words_per_topic.append(" ".join([word for word, _ in top_words]))
+    return top_words_per_topic
+
+top_words_per_topic = extract_top_words(optimal_model, 5)
+
+# Assigning main topic column to dataframe
+def get_main_topic(corpus):
+    topic_weights = optimal_model[corpus]
+    main_topic = max(topic_weights, key=lambda x: x[1])
+    return main_topic[0]
+
+non_rst_ge_4_data['main_topic'] = [get_main_topic(corp) for corp in corpus]
+
+# Adding the topic name correlated with main topic rank
+non_rst_ge_4_data['main_topic_name'] = non_rst_ge_4_data['main_topic'].apply(lambda x: top_words_per_topic[x])
+
+# Export the main topic information to a CSV file
+non_rst_ge_4_data.to_csv('non_rst_ge_4_topic_modeling.csv', index=False)
+
+# Plotting the distribution of topics with top words as labels
+topic_counts = non_rst_ge_4_data['main_topic'].value_counts().sort_index()
+
+plt.style.use('fivethirtyeight')
+plt.figure(figsize=(12, 6))
+sns.barplot(x=topic_counts.index, y=topic_counts.values)
+plt.xticks(range(len(top_words_per_topic)), [top_words_per_topic[i] for i in topic_counts.index], rotation=45, ha='right')
+plt.xlabel('Topic')
+plt.ylabel('Number of Deals')
+plt.title("Distribution of Topics in Deals") 
+plt.show()
+
+# Visualize topics with pyLDAvis
+vis = gensimvis.prepare(optimal_model, corpus, dictionary)
+pyLDAvis.display(vis)
