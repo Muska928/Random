@@ -1,0 +1,103 @@
+
+import spacy
+from spacy.matcher import PhraseMatcher
+from textblob import TextBlob
+import re
+
+# Load Spacy model
+nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
+nlp.max_length = 2000000  # Increase SpaCy's max_length to handle larger texts
+
+# Define multi-word phrases for normalization
+multi_word_phrases = {
+    "account opening": ["account open", "open account", "open accounts"],
+    "client acquisition": ["acquired new client", "acquiring new clients"],
+    "account review": ["review open account", "open account review"],
+}
+
+# Create a PhraseMatcher object
+matcher = PhraseMatcher(nlp.vocab)
+
+# Add patterns to matcher
+for normalized_phrase, phrase_list in multi_word_phrases.items():
+    patterns = [nlp(text) for text in phrase_list]
+    matcher.add(normalized_phrase, None, *patterns)
+
+# Function to normalize multi-word phrases using PhraseMatcher
+def normalize_phrases(text):
+    doc = nlp(text)
+    matches = matcher(doc)
+    normalized_text = text
+    for match_id, start, end in matches:
+        span = doc[start:end].text
+        normalized_phrase = nlp.vocab.strings[match_id]  # Get the normalized form
+        normalized_text = normalized_text.replace(span, normalized_phrase)
+    return normalized_text
+
+# Function to extract and normalize noun phrases using TextBlob
+def extract_noun_phrases(text):
+    blob = TextBlob(text)
+    noun_phrases = blob.noun_phrases
+    return ' '.join(noun_phrases)
+
+# Contractions and abbreviations mapping
+contractions_dict = {
+    "ain't": "are not", "'s":" is", "aren't": "are not", "can't": "cannot", "can't've": "cannot have",
+    # Add more contraction mappings as needed...
+}
+
+# Function to expand contractions
+contractions_re = re.compile('(%s)' % '|'.join(contractions_dict.keys()))
+def expand_contractions(text):
+    def replace(match):
+        return contractions_dict[match.group(0)]
+    return contractions_re.sub(replace, text)
+
+# Function to remove digits
+def remove_digits(text):
+    return re.sub(r'\d+', '', text)
+
+# Function to remove extra punctuation/marks
+def remove_extra_marks(text):
+    return re.sub(r'[^\w\s]', '', text)
+
+# Function to remove stopwords
+def remove_stopwords(text):
+    doc = nlp(text)
+    return ' '.join([token.text for token in doc if not token.is_stop])
+
+# **Additional Cleanup Function** to handle erroneous stopwords like 'th'
+def remove_invalid_tokens(text):
+    invalid_tokens = ['th']  # Add more if necessary
+    tokens = text.split()
+    return ' '.join([word for word in tokens if word not in invalid_tokens])
+
+# Function to lemmatize
+def lemmatize(text):
+    doc = nlp(text)
+    return ' '.join([token.lemma_ for token in doc])
+
+# Full preprocessing pipeline (combining PhraseMatcher and TextBlob)
+def full_preprocess(text):
+    text = expand_contractions(text)  # Step 1: Expand contractions
+    text = text.lower()  # Step 2: Convert to lowercase
+    text = remove_digits(text)  # Step 3: Remove digits
+    text = remove_extra_marks(text)  # Step 4: Remove extra marks
+    text = normalize_phrases(text)  # Step 5: Normalize known phrases using PhraseMatcher
+    text = extract_noun_phrases(text)  # Step 6: Extract and normalize noun phrases using TextBlob
+    text = remove_stopwords(text)  # Step 7: Remove stopwords
+    text = lemmatize(text)  # Step 8: Lemmatization
+    text = remove_invalid_tokens(text)  # Step 9: Remove invalid tokens (like 'th')
+    return text
+
+# Example text to test multi-word lemmatization
+first_row_text = "The account opening process at the Union Bank was tedious. However, account open procedures were later simplified. I acquired new clients while reviewing open accounts."
+
+# Print the original text
+print("Original Text:\n", first_row_text)
+
+# Apply full preprocessing on the test sentence
+processed_first_row = full_preprocess(first_row_text)
+
+# Print the processed text
+print("\nProcessed Text:\n", processed_first_row)
