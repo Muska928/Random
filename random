@@ -1,0 +1,157 @@
+import pandas as pd
+import spacy
+from collections import Counter
+import matplotlib.pyplot as plt
+import seaborn as sns
+import re
+import gensim
+from datetime import datetime
+
+# Load Spacy model (without custom stopwords)
+nlp = spacy.load('en_core_web_md', disable=['parser', 'ner'])
+nlp.max_length = 2000000  # Increase SpaCy's max_length to handle larger texts
+
+# Contractions and abbreviations mapping
+contractions = {
+    "won't": "will not",
+    "can't": "cannot",
+    "i'm": "i am",
+    "it's": "it is",
+    "we've": "we have",
+    "they're": "they are",
+    "corp": "corporation",
+    "inc": "incorporated",
+}
+
+# Function to expand contractions
+def expand_contractions(text):
+    for contraction, expansion in contractions.items():
+        text = re.sub(r"\b" + contraction + r"\b", expansion, text)
+    return text
+
+# Function to detect whether a word is a date
+def is_date(string):
+    try:
+        datetime.strptime(string, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+
+# Function to normalize similar phrases before tokenization and bigram creation
+def normalize_phrases(text):
+    text = re.sub(r'\bopen account\b', 'account open', text)
+    text = re.sub(r'\baccount opening\b', 'account open', text)
+    # Add more phrase replacements as needed
+    return text
+
+# Function to preprocess text in chunks
+def process_text_in_chunks(text, nlp, chunk_size=100000):
+    """Process text in chunks to avoid exceeding SpaCy's max length"""
+    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+    tokens = []
+    for chunk in chunks:
+        doc = nlp(chunk)
+        tokens.extend([token.lemma_ for token in doc if not token.is_stop and not token.is_punct and len(token.lemma_) > 2])
+    return tokens
+
+# Function to remove underscores from bigrams/trigrams
+def remove_underscores(phrases):
+    return [' '.join(phrase.split('_')) for phrase in phrases]
+
+# Function to get n-gram frequency
+def get_ngram_freqs(tokens_list, n=1):
+    if n == 1:
+        return Counter(tokens_list).most_common(20)
+    else:
+        ngrams = zip(*[tokens_list[i:] for i in range(n)])
+        return Counter([' '.join(ngram) for ngram in ngrams]).most_common(20)
+
+# Function to display and plot n-grams
+def display_ngrams(ngram_freq, title):
+    # Create a DataFrame to display as a table
+    ngram_df = pd.DataFrame(ngram_freq, columns=['ngram', 'frequency'])
+    
+    # Print frequency table
+    print(f"\n{'='*40}")
+    print(f"{title} Frequency Table:")
+    print(ngram_df.to_string(index=False))
+    print(f"{'='*40}")
+    
+    # Plot the top 20 n-grams using Seaborn
+    plt.figure(figsize=(12, 8))
+    sns.barplot(x='ngram', y='frequency', data=ngram_df, palette='coolwarm')
+    plt.xticks(rotation=45, ha='right', fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.title(f'Top 20 {title}', fontsize=16, weight='bold')
+    plt.xlabel('N-gram', fontsize=14, weight='bold')
+    plt.ylabel('Frequency', fontsize=14, weight='bold')
+
+    # Add data labels
+    for index, value in enumerate(ngram_df['frequency']):
+        plt.text(index, value + 20, str(value), ha='center', fontsize=10)
+    
+    plt.tight_layout()
+    plt.show()
+
+# Adjust file path and load data from Salesforce analytics
+df_salesforce = pd.read_excel('Data/Closed_Won_Reasons/Closed_Won_Product_Capability.xlsx')
+
+# Concatenate text columns into a single string variable
+df_salesforce['combined_text'] = df_salesforce[['record_comment_text', 
+                                                'executive_summary_text', 
+                                                'win_loss_comments_text']].apply(lambda x: ' '.join(x.dropna()), axis=1)
+
+# Apply phrase normalization to standardize similar phrases
+df_salesforce['combined_text'] = df_salesforce['combined_text'].apply(normalize_phrases)
+
+# First pass to calculate word frequencies across the entire dataset
+all_text = ' '.join(df_salesforce['combined_text'].tolist())
+
+# Process the text in chunks to avoid length issues
+all_tokens = process_text_in_chunks(all_text, nlp)
+
+# Continue with the rest of your analysis using all_tokens
+word_freqs = Counter(all_tokens)
+
+# Preprocess the combined text, separating rare words
+df_salesforce['processed_text'] = df_salesforce['combined_text'].apply(lambda doc: process_text_in_chunks(doc, nlp))
+
+# Filter Non-RST data (without token length constraints)
+non_rst_data = df_salesforce[df_salesforce['account_ecid'] != 'RST']
+
+# Preprocessing the text for analysis (Non-RST Data)
+processed_texts = non_rst_data['processed_text'].tolist()
+
+# Building bi-gram and tri-gram models
+bigram = gensim.models.Phrases(processed_texts, min_count=10)
+trigram = gensim.models.Phrases(bigram[processed_texts], min_count=10)
+
+# Add bigrams and trigrams to the processed texts
+for idx in range(len(processed_texts)):
+    for token in trigram[bigram[processed_texts[idx]]]:
+        if '_' in token:
+            processed_texts[idx].append(token)
+
+# Remove underscores from processed text
+for idx in range(len(processed_texts)):
+    processed_texts[idx] = remove_underscores(processed_texts[idx])
+
+# Recreate processed text back into the dataframe
+non_rst_data['processed_text'] = processed_texts
+
+# Extracting N-Gram frequencies for unigrams, bigrams, trigrams, and four-grams for Non-RST Data
+all_tokens_non_rst = [token for sublist in non_rst_data['processed_text'] for token in sublist]
+
+# Unigrams, Bigrams, Trigrams, Four-Grams Frequency Analysis for Non-RST Data
+unigram_freq = get_ngram_freqs(all_tokens_non_rst, n=1)
+bigram_freq = get_ngram_freqs(all_tokens_non_rst, n=2)
+trigram_freq = get_ngram_freqs(all_tokens_non_rst, n=3)
+fourgram_freq = get_ngram_freqs(all_tokens_non_rst, n=4)
+
+# Display and plot the n-grams for Non-RST Data
+display_ngrams(unigram_freq, 'Unigrams (Non-RST)')
+display_ngrams(bigram_freq, 'Bigrams (Non-RST)')
+display_ngrams(trigram_freq, 'Trigrams (Non-RST)')
+display_ngrams(fourgram_freq, 'Four-Grams (Non-RST)')
+
+print("\nN-Gram frequency analysis for Non-RST data completed.")
