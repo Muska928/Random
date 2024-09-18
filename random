@@ -1,8 +1,0 @@
-# Standardize similar phrases before bigram creation
-def normalize_phrases(text):
-    # Standardize the phrase to "account open"
-    text = re.sub(r'\bopen account\b', 'account open', text)
-    text = re.sub(r'\baccount opening\b', 'account open', text)
-    text = re.sub(r'\bopen account\b', 'account open', text)
-    # Add more similar phrase replacements if necessary
-    return text
