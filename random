@@ -1,0 +1,5 @@
+# Function to remove extra punctuation/marks (including "--")
+def remove_extra_marks(text):
+    return re.sub(r'[^\w\s]', '', text)
+
+ text = remove_extra_marks(text) 
