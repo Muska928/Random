@@ -1,0 +1,48 @@
+import pandas as pd
+
+# Load data
+df_salesforce = pd.read_excel('Data/Closed_Won Reasons/Closed_Won_Product_Capability.xlsx')
+
+# Concatenate text columns into a single string variable
+df_salesforce['combined_text'] = df_salesforce[['record_comment_text', 'executive_summary_text', 'win_loss_comments_text']].apply(lambda x: ' '.join(x.dropna()), axis=1)
+
+# Step 1: Total Count of Deals
+total_deals = len(df_salesforce)
+print(f"Total Count of Deals: {total_deals}")
+
+# Step 2: Count missing values in the text columns and combined_text
+missing_record_comment = df_salesforce['record_comment_text'].isna().sum() + (df_salesforce['record_comment_text'] == '').sum()
+missing_exec_summary = df_salesforce['executive_summary_text'].isna().sum() + (df_salesforce['executive_summary_text'] == '').sum()
+missing_win_loss = df_salesforce['win_loss_comments_text'].isna().sum() + (df_salesforce['win_loss_comments_text'] == '').sum()
+missing_combined_text = df_salesforce['combined_text'].isna().sum() + (df_salesforce['combined_text'] == '').sum()
+
+print(f"Missing values in 'record_comment_text': {missing_record_comment}")
+print(f"Missing values in 'executive_summary_text': {missing_exec_summary}")
+print(f"Missing values in 'win_loss_comments_text': {missing_win_loss}")
+print(f"Missing values in 'combined_text': {missing_combined_text}")
+
+# Step 3: Count RST deals in account_eci and combined_text
+rst_deals_in_account_eci = df_salesforce[df_salesforce['account_eci'] == 'RST'].shape[0]
+rst_deals_in_combined_text = df_salesforce[df_salesforce['combined_text'].str.contains('RST', na=False)].shape[0]
+
+print(f"Total RST deals in 'account_eci': {rst_deals_in_account_eci}")
+print(f"Total RST deals in 'combined_text': {rst_deals_in_combined_text}")
+
+# Step 4: Separate Non-RST deals (both account_eci and combined_text)
+non_rst_data = df_salesforce[(df_salesforce['account_eci'] != 'RST') & (~df_salesforce['combined_text'].str.contains('RST', na=False))]
+non_rst_deals = non_rst_data.shape[0]
+
+print(f"Total Non-RST deals: {non_rst_deals}")
+
+# Step 5: Count missing values in Non-RST dataset for verification
+missing_combined_text_non_rst = non_rst_data['combined_text'].isna().sum() + (non_rst_data['combined_text'] == '').sum()
+print(f"Missing values in 'combined_text' of Non-RST dataset: {missing_combined_text_non_rst}")
+
+# Step 6: Exclude rows with missing or empty values in the 'combined_text' column from the Non-RST dataset
+non_rst_filtered = non_rst_data[non_rst_data['combined_text'].notna() & (non_rst_data['combined_text'] != '')]
+
+# Print the count of rows after excluding missing/empty combined text values
+print(f"Total rows for analysis after excluding missing/empty 'combined_text' in Non-RST data: {len(non_rst_filtered)}")
+
+# Optionally, display a preview of the filtered dataset
+print(non_rst_filtered.head())
