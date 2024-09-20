@@ -56,14 +56,6 @@ missing_values_df, dataset_summary = check_missing_and_categorize(df_salesforce)
 print("\n==== DATASET SUMMARY ====")
 print(dataset_summary.to_string(index=False))
 
-# Styling the missing values dataframe to highlight the column headers in blue
-styled_df = missing_values_df.style.set_properties(**{'text-align': 'center'}) \
-    .set_table_styles([{
-        'selector': 'th',
-        'props': [('background-color', 'lightblue'), ('font-weight', 'bold')]
-    }]) \
-    .format({'Missing Percentage': '{:.2f}%'})
-
-# Display the styled dataframe in Jupyter or print it in console (for basic environments)
-styled_df = styled_df.hide_index()
-styled_df
+# Print the missing values summary table
+print("\n==== MISSING VALUES SUMMARY ====")
+print(missing_values_df.to_string(index=False))
