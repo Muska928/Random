@@ -1,0 +1,23 @@
+# ---- Step to exclude and count rows with "RST" in 'account_eci' and 'combined_text' ----
+
+# Count rows where 'account_eci' contains 'RST'
+rst_in_account_eci = df_salesforce[df_salesforce['account_eci'] == 'RST']
+
+# Count rows where 'combined_text' contains 'RST'
+rst_in_combined_text = df_salesforce[df_salesforce['combined_text'].str.contains('RST', case=False)]
+
+# Combine the two conditions for excluding 'RST' rows
+rst_rows_combined = df_salesforce[(df_salesforce['account_eci'] == 'RST') | (df_salesforce['combined_text'].str.contains('RST', case=False))]
+
+# Exclude the 'RST' rows from the dataset for analysis
+non_rst_data = df_salesforce[~((df_salesforce['account_eci'] == 'RST') | (df_salesforce['combined_text'].str.contains('RST', case=False)))]
+
+# Print counts of rows containing 'RST' in both columns
+print(f"Total rows with 'RST' in 'account_eci': {len(rst_in_account_eci)}")
+print(f"Total rows with 'RST' in 'combined_text': {len(rst_in_combined_text)}")
+
+# Print combined count of rows with 'RST' in either column
+print(f"Total combined RST rows excluded: {len(rst_rows_combined)}")
+
+# Print count of rows included for analysis
+print(f"Total rows for analysis (Non-RST): {len(non_rst_data)}")
