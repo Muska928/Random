@@ -1,0 +1,67 @@
+import pandas as pd
+from colorama import Fore, Style, init
+
+# Initialize colorama
+init(autoreset=True)
+
+# Load data
+df_salesforce = pd.read_excel('Data/Closed_Won Reasons/Closed_Won_Product_Capability.xlsx')
+
+# Function to check for missing values, column types, and add dataset information
+def check_missing_and_categorize(df):
+    # Initialize a dictionary to store column types and missing value information
+    column_info = {'Column': [], 'Type': [], 'Missing Values': [], 'Missing Percentage': []}
+    
+    # Total rows and columns in the dataset
+    total_rows = len(df)
+    total_columns = len(df.columns)
+    
+    # Calculate the memory usage of the dataframe
+    memory_usage = df.memory_usage(deep=True).sum() / (1024**2)  # Memory in MB
+
+    for col in df.columns:
+        # Detect the data type of the column
+        if df[col].dtype == 'object':
+            column_type = 'text'
+        elif pd.api.types.is_numeric_dtype(df[col]):
+            column_type = 'numerical'
+        else:
+            column_type = 'both'  # In case there's a mixed type (though rare)
+
+        # Check for missing values (NaNs and empty strings for text columns)
+        if column_type == 'text':
+            missing_count = df[col].isna().sum() + (df[col] == '').sum()
+        else:
+            missing_count = df[col].isna().sum()
+
+        missing_percentage = (missing_count / total_rows) * 100
+        
+        # Append the info to the dictionary
+        column_info['Column'].append(col)
+        column_info['Type'].append(column_type)
+        column_info['Missing Values'].append(missing_count)
+        column_info['Missing Percentage'].append(missing_percentage)
+
+    # Convert the dictionary to a dataframe for better readability
+    missing_values_df = pd.DataFrame(column_info)
+
+    # Add total rows, columns, and memory usage summary
+    dataset_summary = pd.DataFrame({
+        'Dataset Information': ['Total Rows', 'Total Columns', 'Memory Usage (MB)'],
+        'Value': [total_rows, total_columns, f'{memory_usage:.2f} MB']
+    })
+
+    return missing_values_df, dataset_summary
+
+# Call the function to check missing values and categorize columns
+missing_values_df, dataset_summary = check_missing_and_categorize(df_salesforce)
+
+# Print the dataset summary with colored text
+print(Fore.CYAN + Style.BRIGHT + "\n==== DATASET SUMMARY ====")
+for index, row in dataset_summary.iterrows():
+    print(Fore.CYAN + Style.BRIGHT + f"{row['Dataset Information']}: {row['Value']}")
+
+# Print the missing values summary table
+print(Fore.YELLOW + Style.BRIGHT + "\n==== MISSING VALUES SUMMARY ====")
+for index, row in missing_values_df.iterrows():
+    print(Fore.YELLOW + f"{row['Column']}: Type: {row['Type']}, Missing Values: {row['Missing Values']}, Missing Percentage: {row['Missing Percentage']:.2f}%")
