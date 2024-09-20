@@ -1,0 +1,58 @@
+import pandas as pd
+
+# Load data
+df_salesforce = pd.read_excel('Data/Closed_Won Reasons/Closed_Won_Product_Capability.xlsx')
+
+# Function to check for missing values and categorize column type
+def check_missing_and_categorize(df):
+    # Initialize a dictionary to store column types and missing value information
+    column_info = {'Column': [], 'Type': [], 'Missing Values': [], 'Missing Percentage': []}
+    
+    # Total rows in the dataset
+    total_rows = len(df)
+
+    for col in df.columns:
+        # Detect the data type of the column
+        if df[col].dtype == 'object':
+            column_type = 'text'
+        elif pd.api.types.is_numeric_dtype(df[col]):
+            column_type = 'numerical'
+        else:
+            column_type = 'both'  # In case there's a mixed type (though rare)
+
+        # Check for missing values (NaNs and empty strings for text columns)
+        if column_type == 'text':
+            missing_count = df[col].isna().sum() + (df[col] == '').sum()
+        else:
+            missing_count = df[col].isna().sum()
+
+        missing_percentage = (missing_count / total_rows) * 100
+        
+        # Append the info to the dictionary
+        column_info['Column'].append(col)
+        column_info['Type'].append(column_type)
+        column_info['Missing Values'].append(missing_count)
+        column_info['Missing Percentage'].append(missing_percentage)
+
+    # Convert the dictionary to a dataframe for better readability
+    missing_values_df = pd.DataFrame(column_info)
+
+    return missing_values_df
+
+# Call the function to check missing values and categorize columns
+missing_values_df = check_missing_and_categorize(df_salesforce)
+
+# Print the missing values DataFrame
+print("\n==== MISSING VALUES SUMMARY ====\n")
+print(missing_values_df.to_string(index=False))
+
+# Add the "Type" information to the original dataset (for each column)
+df_salesforce_with_types = df_salesforce.copy()
+df_salesforce_with_types['Column Type'] = missing_values_df.set_index('Column')['Type']
+
+# Save missing values analysis to Excel
+missing_values_df.to_excel('missing_values_analysis.xlsx', index=False)
+
+# Optional: if you want to display the full dataframe using a library for better formatting, you can use this:
+import ace_tools as tools
+tools.display_dataframe_to_user(name="Missing Values Analysis", dataframe=missing_values_df)
