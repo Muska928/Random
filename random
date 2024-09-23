@@ -1,0 +1,189 @@
+from sklearn.model_selection import ParameterGrid
+import gensim
+from gensim.models.coherencemodel import CoherenceModel
+import pyLDAvis
+import pyLDAvis.gensim_models as gensimvis  # Interface for gensim-based LDA models
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Step 3: Apply Preprocessing to Non-RST Deals
+# Assuming 'non_rst_cleaned' dataframe is already cleaned with missing values removed.
+# Apply preprocessing to the cleaned Non-RST dataset
+non_rst_cleaned['processed_text'] = non_rst_cleaned['combined_text'].apply(lambda x: full_preprocess(x, word_counter=word_counter, min_freq=2))
+
+# Print a sample of the processed Non-RST dataset
+print(non_rst_cleaned[['combined_text', 'processed_text']].head())
+
+# Step 4: Create and save word frequency counter across the entire dataset for rare word removal
+all_words = ' '.join(non_rst_cleaned['combined_text'].tolist())
+word_counter = Counter(all_words.split())
+
+# Save the processed data for future analysis
+non_rst_cleaned.to_csv('non_rst_cleaned_processed.csv', index=False)
+
+# Function to tokenize the processed text
+def tokenize_text(text):
+    return text.split()
+
+# Function to get n-gram frequency for Non-RST data
+def get_ngram_freq(tokens_list, n):
+    ngrams = zip(*[tokens_list[i:] for i in range(n)])
+    return Counter([' '.join(ngram) for ngram in ngrams])
+
+# Save n-grams to an Excel file
+def save_ngram_freqs_to_excel(ngram_freqs, sheet_name, writer):
+    ngram_df = pd.DataFrame(ngram_freqs, columns=['ngram', 'frequency'])
+    ngram_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+# Save n-grams in an Excel file
+with pd.ExcelWriter('ngram_frequencies_non_rst.xlsx') as writer:
+    unigram_freq_non_rst = get_ngram_freq(all_words.split(), 1)
+    bigram_freq_non_rst = get_ngram_freq(all_words.split(), 2)
+    trigram_freq_non_rst = get_ngram_freq(all_words.split(), 3)
+    
+    save_ngram_freqs_to_excel(unigram_freq_non_rst.most_common(30), 'unigrams', writer)
+    save_ngram_freqs_to_excel(bigram_freq_non_rst.most_common(30), 'bigrams', writer)
+    save_ngram_freqs_to_excel(trigram_freq_non_rst.most_common(30), 'trigrams', writer)
+
+# Function to display and plot n-grams for Non-RST data
+def display_ngrams(ngram_freq, title):
+    ngram_df = pd.DataFrame(ngram_freq.most_common(30), columns=['ngram', 'frequency'])
+    print(f"\n{title} Frequency Table (Non-RST):")
+    print(ngram_df.to_string(index=False))
+
+    plt.figure(figsize=(12, 8))
+    sns.barplot(x='ngram', y='frequency', data=ngram_df, palette='coolwarm')
+    
+    # Add frequency numbers on top of bars
+    for idx, value in enumerate(ngram_df['frequency']):
+        plt.text(idx, value, f'{value}', ha='center', va='bottom', fontsize=10)
+    
+    plt.title(f"Top 30 {title} (Non-RST)", fontsize=16, weight='bold')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.show()
+
+# Display and plot unigrams, bigrams, trigrams for Non-RST data
+display_ngrams(unigram_freq_non_rst, "Unigrams")
+display_ngrams(bigram_freq_non_rst, "Bigrams")
+display_ngrams(trigram_freq_non_rst, "Trigrams")
+
+# Continue with the LDA Process
+
+# Step 5: Prepare corpus for LDA using bigrams/trigrams if needed
+def prepare_corpus_for_lda(texts, ngram_type):
+    print(f"--- Preparing {ngram_type}s for LDA ---")
+    # Generate n-grams based on the input n-gram type
+    if ngram_type == 'bigram':
+        print("Bigrams being fed into LDA.")
+        texts = [bigram_mod[text] for text in texts]
+    elif ngram_type == 'trigram':
+        print("Trigrams being fed into LDA.")
+        texts = [trigram_mod[bigram_mod[text]] for text in texts]
+    else:
+        print("Unigrams being fed into LDA.")
+    
+    # Print first 5 records being fed into LDA
+    for i, text in enumerate(texts[:5]):
+        print(f"Record {i+1}: {text}")
+    return texts
+
+# Tokenize the processed text
+non_rst_cleaned['tokens'] = non_rst_cleaned['processed_text'].apply(tokenize_text)
+texts = non_rst_cleaned['tokens'].tolist()
+
+# You can choose 'unigram', 'bigram', or 'trigram' based on your requirements.
+ngram_type = 'bigram'  # You can change to 'unigram' or 'trigram'
+texts_for_lda = prepare_corpus_for_lda(texts, ngram_type)
+
+# Step 6: Create dictionary and corpus for LDA
+dictionary = gensim.corpora.Dictionary(texts_for_lda)
+corpus = [dictionary.doc2bow(text) for text in texts_for_lda]
+
+# Function for LDA grid search
+def lda_grid_search(dictionary, corpus, texts, param_grid):
+    best_coherence = -1
+    best_params = None
+    best_model = None
+
+    # Grid search over topic number and passes
+    for params in ParameterGrid(param_grid):
+        model = gensim.models.LdaModel(
+            corpus=corpus,
+            id2word=dictionary,
+            num_topics=params['num_topics'],
+            passes=params['passes'],
+            random_state=42
+        )
+
+        # Compute coherence score
+        coherence_model = CoherenceModel(model=model, texts=texts, dictionary=dictionary, coherence='c_v')
+        coherence = coherence_model.get_coherence()
+
+        # Print the combination of params and coherence score
+        print(f"Topics: {params['num_topics']}, Passes: {params['passes']} -> Coherence: {coherence}")
+
+        if coherence > best_coherence:
+            best_coherence = coherence
+            best_params = params
+            best_model = model
+
+    print(f"\nBest Model -> Topics: {best_params['num_topics']}, Passes: {best_params['passes']}, Coherence: {best_coherence}")
+    return best_model
+
+# Grid search parameter grid
+param_grid = {
+    'num_topics': [5, 10, 15],
+    'passes': [5, 10]
+}
+
+# Step 7: Run grid search with LDA to find the optimal model
+optimal_model = lda_grid_search(dictionary, corpus, texts_for_lda, param_grid)
+
+# Step 8: Assign main topics to the dataset
+def get_main_topic(corpus, model):
+    topic_weights = model[corpus]
+    main_topic = max(topic_weights, key=lambda x: x[1])  # Get the topic with the highest weight
+    return main_topic[0]
+
+non_rst_cleaned['main_topic'] = [get_main_topic(corp, optimal_model) for corp in corpus]
+
+# Extract topic names
+top_words_per_topic = extract_top_words(optimal_model, 5)
+
+# Assign the topic name correlated with the main topic rank
+non_rst_cleaned['main_topic_name'] = non_rst_cleaned['main_topic'].apply(lambda x: top_words_per_topic[x])
+
+# Step 9: Calculate the frequency of each topic
+topic_frequency = non_rst_cleaned['main_topic_name'].value_counts().reset_index()
+topic_frequency.columns = ['Topic Name', 'Frequency']
+
+# Print the topic frequency summary
+print("\nLDA Topic Frequency Summary:")
+print(topic_frequency)
+
+# Optional: Save to Excel
+topic_frequency.to_excel('lda_topic_frequency_summary.xlsx', index=False)
+
+# Step 10: Plot the distribution of topics
+plt.figure(figsize=(12, 6))
+sns.barplot(x='Topic Name', y='Frequency', data=topic_frequency, palette='coolwarm')
+
+# Adding frequencies on top of bars
+for i, freq in enumerate(topic_frequency['Frequency']):
+    plt.text(i, freq + 20, str(freq), ha='center', fontsize=12, fontweight='bold')
+
+plt.xticks(rotation=45, ha='right', fontsize=12)
+plt.xlabel('Topic Name', fontsize=14)
+plt.ylabel('Frequency', fontsize=14)
+plt.title('LDA Topic Frequency Summary', fontsize=16, weight='bold')
+plt.tight_layout()
+plt.show()
+
+# Step 11: Save the updated non_rst_cleaned dataset with 'main_topic' and 'main_topic_name'
+non_rst_cleaned.to_csv('non_rst_cleaned_with_topics.csv', index=False)
+
+# Step 12: Visualization with pyLDAvis
+# Preparing pyLDAvis visualization
+lda_vis_data = gensimvis.prepare(optimal_model, corpus, dictionary)
+pyLDAvis.save_html(lda_vis_data, 'lda_visualization.html')  # Save the visualization to an HTML file
