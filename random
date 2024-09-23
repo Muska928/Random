@@ -1,0 +1,18 @@
+multi_word_phrases = {
+    # UNIGRAM
+    "balance": ["fund", "deposit", "liquidity"],
+    "Company": ["llc", "Company", "company"],
+    "account": ["dda"],
+    "ts": ["fx"],
+    "open": ["set"],
+    "add": ["additional"],
+    
+    # BIGRAM COMBINATIONS
+    "open account": ["account opening", "opening account", "open account"],
+    "account open": ["open account", "open accounts", "new account", "account opening", "opening account", "account account"],  # Ensure all forms are included here
+    "commercial": ["commercial card", "card commercial"],
+    "core balance": ["core cash", "core balance"],
+    "deal representation": ["deal represent", "represent opportunity"],
+    "balance account": ["balance account", "account balance"],
+    "need client": ["Client look", "client need"],
+}
