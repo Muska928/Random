@@ -1,0 +1,23 @@
+multi_word_phrases = {
+}
+
+
+def normalize_phrases(text):
+    for normalized, variants in multi_word_phrases.items():
+        for variant in variants:
+            text = text.replace(variant, normalized)
+    return text
+
+
+text = normalize_phrases(text)  # Step 5: Normalize multi-word phrases
+
+# Print counts of terms before preprocessing
+print(f"Count of 'fund' before preprocessing: {all_processed_texts.str.contains('fund').sum()}")
+print(f"Count of 'deposit' before preprocessing: {all_processed_texts.str.contains('deposit').sum()}")
+print(f"Count of 'liquidity' before preprocessing: {all_processed_texts.str.contains('liquidity').sum()}")
+
+# Apply preprocessing
+df_salesforce['processed_text'] = df_salesforce['combined_text'].apply(lambda x: full_preprocess(x))
+
+# Print counts of terms after preprocessing
+print(f"Count of 'balance' after preprocessing: {df_salesforce['processed_text'].str.contains('balance').sum()}")
