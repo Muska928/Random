@@ -1,0 +1,218 @@
+from sklearn.model_selection import ParameterGrid
+import gensim
+from gensim.models.coherencemodel import CoherenceModel
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Function to tokenize and prepare the text for LDA
+def tokenize_text(text):
+    return [token.text for token in nlp(text)]
+
+# Function to prepare corpus for LDA and specify n-gram type
+def prepare_corpus_for_lda(tokens, ngram_type='unigram'):
+    labeled_ngrams = []
+    
+    # Generate n-grams based on the input n-gram type
+    if ngram_type == 'bigram':
+        ngram_list = get_ngram_freq(tokens.split(), 2)
+    elif ngram_type == 'trigram':
+        ngram_list = get_ngram_freq(tokens.split(), 3)
+    else:
+        ngram_list = tokens.split()
+
+    # Label n-gram type and print output for each record
+    labeled_ngrams = [(ngram_type, ngram) for ngram in ngram_list]
+    print(f"--- {ngram_type.capitalize()}s being fed into LDA ---")
+    
+    for idx, record in enumerate(labeled_ngrams):
+        print(f"Record {idx + 1}: {record}")
+
+    return labeled_ngrams
+
+# Function to extract top words from each topic
+def extract_top_words(model, num_words):
+    top_words_per_topic = []
+    for topic_id in range(model.num_topics):
+        top_words = model.show_topic(topic_id, num_words)
+        top_words_per_topic.append(", ".join([word for word, _ in top_words]))
+    return top_words_per_topic
+
+# Assign the main topic for each document in the corpus
+def get_main_topic(corpus):
+    topic_weights = optimal_model[corpus]
+    main_topic = max(topic_weights, key=lambda x: x[1])  # Get the topic with the highest weight
+    return main_topic[0]
+
+# Function for LDA grid search
+def lda_grid_search(dictionary, corpus, texts, param_grid):
+    best_coherence = -1
+    best_params = None
+    best_model = None
+
+    # Grid search over topic number and passes
+    for params in ParameterGrid(param_grid):
+        model = gensim.models.LdaModel(
+            corpus=corpus,
+            id2word=dictionary,
+            num_topics=params['num_topics'],
+            passes=params['passes'],
+            random_state=42
+        )
+
+        # Compute coherence score
+        coherence_model = CoherenceModel(model=model, texts=texts, dictionary=dictionary, coherence='c_v')
+        coherence = coherence_model.get_coherence()
+
+        # Print the combination of params and coherence score
+        print(f"Topics: {params['num_topics']}, Passes: {params['passes']} -> Coherence: {coherence}")
+
+        if coherence > best_coherence:
+            best_coherence = coherence
+            best_params = params
+            best_model = model
+
+    print(f"\nBest Model -> Topics: {best_params['num_topics']}, Passes: {best_params['passes']}, Coherence: {best_coherence}")
+    return best_model
+
+# Grid search parameter grid
+param_grid = {
+    'num_topics': [5, 10, 15],
+    'passes': [5, 10]
+}
+
+# Step 1: Process and tokenize the dataset (assuming `non_rst_cleaned` is available)
+non_rst_cleaned['tokens'] = non_rst_cleaned['processed_text'].apply(tokenize_text)
+
+# Step 2: Prepare the corpus for LDA (you can adjust for unigrams, bigrams, or trigrams)
+# You can choose 'unigram', 'bigram', or 'trigram' based on your requirements.
+labeled_ngrams = prepare_corpus_for_lda(' '.join(non_rst_cleaned['processed_text']), 'bigram')
+
+# Step 3: Create dictionary and corpus for LDA
+dictionary = gensim.corpora.Dictionary(labeled_ngrams)
+corpus = [dictionary.doc2bow(text) for text in labeled_ngrams]
+
+# Step 4: Run grid search with LDA to find the optimal model
+optimal_model = lda_grid_search(dictionary, corpus, labeled_ngrams, param_grid)
+
+# Step 5: Apply the get_main_topic function to all documents
+non_rst_cleaned['main_topic'] = [get_main_topic(corp) for corp in corpus]
+
+# Step 6: Extract topic names
+top_words_per_topic = extract_top_words(optimal_model, 5)
+
+# Step 7: Assign the topic name correlated with the main topic rank
+non_rst_cleaned['main_topic_name'] = non_rst_cleaned['main_topic'].apply(lambda x: top_words_per_topic[x])
+
+# Step 8: Calculate the frequency of each topic
+topic_frequency = non_rst_cleaned['main_topic_name'].value_counts().reset_index()
+topic_frequency.columns = ['Topic Name', 'Frequency']
+
+# Step 9: Print the topic frequency summary
+print("\nLDA Topic Frequency Summary:")
+print(topic_frequency)
+
+# Optionally, save to Excel
+topic_frequency.to_excel('lda_topic_frequency_summary.xlsx', index=False)
+
+# Step 10: Plot the distribution of topics
+plt.figure(figsize=(12, 6))
+sns.barplot(x='Topic Name', y='Frequency', data=topic_frequency, palette='coolwarm')
+
+# Adding frequencies on top of bars
+for i, freq in enumerate(topic_frequency['Frequency']):
+    plt.text(i, freq + 20, str(freq), ha='center', fontsize=12, fontweight='bold')
+
+plt.xticks(rotation=45, ha='right', fontsize=12)
+plt.xlabel('Topic Name', fontsize=14)
+plt.ylabel('Frequency', fontsize=14)
+plt.title('LDA Topic Frequency Summary', fontsize=16, weight='bold')
+plt.tight_layout()
+plt.show()
+
+
+
+--------
+import gensim
+from gensim import corpora
+from sklearn.model_selection import ParameterGrid
+from collections import defaultdict
+
+# Function to classify n-grams and prepare them for LDA
+def prepare_corpus_for_lda(data, ngram_type='unigram'):
+    # Tokenizing the processed text
+    tokenized_text = [text.split() for text in data]
+    
+    # Classifying as unigram, bigram, or trigram
+    print(f"\n--- {ngram_type.capitalize()}s being fed into LDA ---\n")
+    for idx, tokens in enumerate(tokenized_text[:5]):  # Limiting to first 5 records for clarity
+        print(f"Record {idx + 1} ({ngram_type.capitalize()}): {tokens}")
+    
+    # Create dictionary and corpus needed for LDA
+    dictionary = corpora.Dictionary(tokenized_text)
+    corpus = [dictionary.doc2bow(text) for text in tokenized_text]
+    
+    return dictionary, corpus, tokenized_text
+
+# Function to run LDA and display topics
+def run_lda(dictionary, corpus, num_topics=5, passes=10):
+    # Create LDA model using Gensim
+    lda_model = gensim.models.LdaModel(
+        corpus=corpus,
+        id2word=dictionary,
+        num_topics=num_topics,
+        random_state=42,
+        update_every=1,
+        passes=passes,
+        alpha='auto',
+        per_word_topics=True
+    )
+    
+    # Print the topics found by LDA
+    print("\n--- LDA Topics ---\n")
+    topics = lda_model.print_topics(num_words=10)
+    for idx, topic in topics:
+        print(f"Topic {idx + 1}: {topic}")
+    
+    return lda_model
+
+# Grid Search for Optimal LDA Parameters
+def grid_search_lda(corpus, dictionary, tokenized_text, num_topics_grid, passes_grid):
+    # Grid for the parameters
+    param_grid = {
+        'num_topics': num_topics_grid,
+        'passes': passes_grid
+    }
+    
+    grid = ParameterGrid(param_grid)
+    results = defaultdict(list)
+    
+    # Loop through each combination of parameters
+    for params in grid:
+        print(f"\nRunning LDA with num_topics={params['num_topics']} and passes={params['passes']}")
+        lda_model = run_lda(dictionary, corpus, num_topics=params['num_topics'], passes=params['passes'])
+        coherence_model = gensim.models.CoherenceModel(
+            model=lda_model, texts=tokenized_text, dictionary=dictionary, coherence='c_v'
+        )
+        coherence_score = coherence_model.get_coherence()
+        print(f"Coherence Score: {coherence_score}")
+        
+        # Store results
+        results['num_topics'].append(params['num_topics'])
+        results['passes'].append(params['passes'])
+        results['coherence'].append(coherence_score)
+    
+    # Return the results to analyze later
+    return pd.DataFrame(results)
+
+# Example Usage
+print("\nRunning LDA on Unigrams\n")
+dictionary_uni, corpus_uni, tokenized_unigrams = prepare_corpus_for_lda(non_rst_cleaned['processed_text'], 'unigram')
+lda_unigram_results = grid_search_lda(corpus_uni, dictionary_uni, tokenized_unigrams, num_topics_grid=[5, 10, 15], passes_grid=[5, 10])
+
+print("\nRunning LDA on Bigrams\n")
+dictionary_bi, corpus_bi, tokenized_bigrams = prepare_corpus_for_lda(non_rst_cleaned['processed_text'], 'bigram')
+lda_bigram_results = grid_search_lda(corpus_bi, dictionary_bi, tokenized_bigrams, num_topics_grid=[5, 10, 15], passes_grid=[5, 10])
+
+print("\nRunning LDA on Trigrams\n")
+dictionary_tri, corpus_tri, tokenized_trigrams = prepare_corpus_for_lda(non_rst_cleaned['processed_text'], 'trigram')
+lda_trigram_results = grid_search_lda(corpus_tri, dictionary_tri, tokenized_trigrams, num_topics_grid=[5, 10, 15], passes_grid=[5, 10])
