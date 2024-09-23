@@ -1,0 +1,64 @@
+import re
+
+# Function to clean up less meaningful terms
+def clean_terms(text):
+    # Define replacement patterns for unigrams, bigrams, and trigrams
+    replacements = {
+        # Unigrams
+        r'\bmm\b': '',  # Remove generic terms like 'mm'
+        r'\brepresent\b': '',  # Represent is too generic on its own
+        r'\bpeo\b': '',  # Potential typo or unmeaningful term
+        r'\bset\b': '',  # Generic verb with no context
+        r'\bllc\b': '',  # Company type, not significant in analysis
+        r'\badd\b': '',  # Generic action word
+        r'\bbaca\b': '',  # Unclear acronym, remove if not relevant
+        r'\bts\b': '',  # Ambiguous, could be removed if unclear
+        
+        # Bigrams
+        r'\bnew dda\b': '',  # Unclear bigram
+        r'\bnew client\b': 'client acquisition',  # Combine to a more meaningful phrase
+        r'\bclient move\b': '',  # Vague, remove
+        r'\bnet new\b': '',  # Remove unless clarified
+        r'\bnew acquire\b': 'client acquisition',  # Combine to a meaningful phrase
+        r'\bclient look\b': '',  # Unclear, remove
+        r'\bcore cash\b': 'liquidity management',  # Refine to meaningful finance phrase
+        
+        # Trigrams
+        r'\bset project retention\b': '',  # Vague, remove
+        r'\bnet new account\b': 'new account',  # Simplify
+        r'\bwells fargo\b': '',  # Remove company name unless doing competitor analysis
+        r'\brepresent client need\b': 'client need analysis',  # Clarify the action
+        r'\bcash liquidity core\b': 'liquidity management',  # Refine and remove redundancy
+        r'\bnew service new\b': 'new service offering',  # Make this more actionable
+    }
+
+    # Apply the replacements to the text
+    for pattern, replacement in replacements.items():
+        text = re.sub(pattern, replacement, text)
+    
+    # Clean up extra spaces after replacements
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    return text
+
+# Sample text for testing (this would be your cleaned dataset text)
+sample_text = """
+The new client acquisition was smooth, and the account open process was well-handled. 
+There were challenges in managing core cash, but the liquidity was strong. 
+Represent client needs were addressed in the project retention setup.
+"""
+
+# Apply the cleaning function to the sample text
+cleaned_sample_text = clean_terms(sample_text)
+
+print("Original Sample Text:")
+print(sample_text)
+
+print("\nCleaned Sample Text:")
+print(cleaned_sample_text)
+
+# Apply to your dataset
+non_rst_cleaned['processed_text'] = non_rst_cleaned['processed_text'].apply(lambda x: clean_terms(x))
+
+# Optionally, save the cleaned dataset for further analysis
+non_rst_cleaned.to_csv('non_rst_cleaned_combined.csv', index=False)
