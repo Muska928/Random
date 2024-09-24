@@ -1,0 +1,123 @@
+import pandas as pd
+import spacy
+from collections import Counter
+import matplotlib.pyplot as plt
+import seaborn as sns
+import gensim
+import pyLDAvis.gensim_models as gensimvis
+import pyLDAvis
+from nltk.tokenize import word_tokenize
+from datetime import datetime
+
+# Load Spacy model
+nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
+
+# Load the data
+df_salesforce = pd.read_excel('Data/Closed_Won Reasons/Closed_Won_Product_Capability.xlsx')
+
+# Step 1: Preprocess Text (tokenization and other NLP steps)
+def preprocess_lda(text):
+    return text.split()
+
+# Step 2: Tokenize and create bigrams and trigrams
+def create_bigrams_trigrams(processed_texts):
+    bigram = gensim.models.Phrases(processed_texts, min_count=10)
+    trigram = gensim.models.Phrases(bigram[processed_texts], min_count=10)
+
+    for idx in range(len(processed_texts)):
+        for token in trigram[bigram[processed_texts[idx]]]:
+            if '_' in token:
+                processed_texts[idx].append(token)
+
+    return processed_texts
+
+# Step 3: Print ngrams feeding into LDA
+def print_ngrams(processed_texts):
+    all_words = ' '.join([' '.join(text) for text in processed_texts])
+    unigram_freq = get_ngram_freq(all_words.split(), 1)
+    bigram_freq = get_ngram_freq(all_words.split(), 2)
+    trigram_freq = get_ngram_freq(all_words.split(), 3)
+    
+    print("Unigrams Feeding into LDA:")
+    display_ngrams(unigram_freq, "Top Unigrams")
+    
+    print("Bigrams Feeding into LDA:")
+    display_ngrams(bigram_freq, "Top Bigrams")
+    
+    print("Trigrams Feeding into LDA:")
+    display_ngrams(trigram_freq, "Top Trigrams")
+
+# Step 4: Apply LDA
+def apply_lda(processed_texts, num_topics=10, passes=10):
+    processed_texts = create_bigrams_trigrams(processed_texts)
+    
+    # Create dictionary and corpus
+    dictionary = gensim.corpora.Dictionary(processed_texts)
+    dictionary.filter_extremes(no_below=5, no_above=0.5)
+    corpus = [dictionary.doc2bow(text) for text in processed_texts]
+
+    # Train LDA model
+    lda_model = gensim.models.LdaMulticore(
+        corpus=corpus,
+        id2word=dictionary,
+        num_topics=num_topics,
+        random_state=100,
+        chunksize=100,
+        passes=passes,
+        alpha='asymmetric',
+        eta='auto'
+    )
+    
+    return lda_model, corpus, dictionary
+
+# Step 5: Compute and plot coherence values
+def compute_coherence_values(dictionary, corpus, processed_texts, limit, start=2, step=2):
+    coherence_values = []
+    model_list = []
+    for num_topics in range(start, limit, step):
+        model = gensim.models.LdaMulticore(corpus=corpus, id2word=dictionary, num_topics=num_topics, random_state=100, chunksize=100, passes=10, alpha='asymmetric', eta='auto')
+        model_list.append(model)
+        coherencemodel = gensim.models.CoherenceModel(model=model, texts=processed_texts, dictionary=dictionary, coherence='c_v')
+        coherence_values.append(coherencemodel.get_coherence())
+    
+    return model_list, coherence_values
+
+def plot_coherence_values(start, limit, step, coherence_values):
+    x = range(start, limit, step)
+    plt.figure(figsize=(10, 5))
+    sns.barplot(x=x, y=coherence_values, palette='Blues_d')
+    plt.xlabel("Number of Topics")
+    plt.ylabel("Coherence Score")
+    plt.title("Coherence Values by Number of Topics")
+    plt.xticks(x)
+    plt.grid(True, axis='y', linestyle='--', alpha=0.7)
+    plt.show()
+
+# Step 6: Save corpus to CSV
+def save_corpus_to_csv(corpus, dictionary, filename='lda_corpus.csv'):
+    # Convert corpus to human-readable format
+    human_readable_corpus = [[(dictionary[word_id], freq) for word_id, freq in doc] for doc in corpus]
+    
+    # Create a DataFrame and save it
+    corpus_df = pd.DataFrame(human_readable_corpus)
+    corpus_df.to_csv(filename, index=False)
+
+# Apply preprocessing
+non_rst_cleaned['processed_text'] = non_rst_cleaned['combined_text'].apply(preprocess_lda)
+processed_texts = non_rst_cleaned['processed_text'].tolist()
+
+# Apply LDA and print the first 10 examples feeding into the model
+lda_model, corpus, dictionary = apply_lda(processed_texts, num_topics=10)
+print("First 10 examples feeding into LDA:")
+for i, doc in enumerate(processed_texts[:10]):
+    print(f"Document {i+1}: {doc}")
+
+# Save the corpus to a CSV file
+save_corpus_to_csv(corpus, dictionary, filename='lda_corpus.csv')
+
+# Compute and plot coherence values for a range of topics
+start = 2
+limit = 20
+step = 2
+model_list, coherence_values = compute_coherence_values(dictionary, corpus, processed_texts, limit, start, step)
+plot_coherence_values(start, limit, step, coherence_values)
