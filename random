@@ -1,4 +1,0 @@
-# Function to get n-gram frequency for a given list of tokens
-def get_ngram_freq(tokens_list, n):
-    ngrams = zip(*[tokens_list[i:] for i in range(n)])  # Create n-grams from the tokenized list
-    return Counter([' '.join(ngram) for ngram in ngrams])  # Count the frequency of each n-gram
