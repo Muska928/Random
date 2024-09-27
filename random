@@ -1,0 +1,84 @@
+# Step 6: LDA Topic Modeling (This is the original code from the image)
+def preprocess_lda(text):
+    return text.split()
+
+non_rst_cleaned['tokens'] = non_rst_cleaned['cleaned_text'].apply(preprocess_lda)
+
+processed_texts = non_rst_cleaned['tokens'].tolist()
+
+# Build bigram and trigram models
+bigram = gensim.models.Phrases(processed_texts, min_count=10)
+trigram = gensim.models.Phrases(bigram[processed_texts], min_count=10)
+
+for idx in range(len(processed_texts)):
+    for token in trigram[bigram[processed_texts[idx]]]:
+        if '_' in token:
+            processed_texts[idx].append(token)
+
+dictionary = gensim.corpora.Dictionary(processed_texts)
+dictionary.filter_extremes(no_below=5, no_above=0.5)
+corpus = [dictionary.doc2bow(text) for text in processed_texts]
+
+def compute_coherence_values(dictionary, corpus, texts, limit, start=2, step=2):
+    coherence_values = []
+    model_list = []
+    for num_topics in range(start, limit, step):
+        model = gensim.models.LdaMulticore(corpus=corpus, num_topics=num_topics, id2word=dictionary, passes=10)
+        model_list.append(model)
+        coherencemodel = CoherenceModel(model=model, texts=texts, dictionary=dictionary, coherence='c_v')
+        coherence_values.append(coherencemodel.get_coherence())
+    return model_list, coherence_values
+
+model_list, coherence_values = compute_coherence_values(dictionary, corpus, processed_texts, limit=20, start=2, step=2)
+
+optimal_model = model_list[coherence_values.index(max(coherence_values))]
+
+# -- New code starts here --
+
+# Extract top words from each topic
+def extract_top_words(model, num_words):
+    top_words_per_topic = []
+    for topic_id in range(model.num_topics):
+        top_words = model.show_topic(topic_id, num_words)
+        top_words_per_topic.append(" ".join([word for word, prob in top_words]))
+    return top_words_per_topic
+
+# Step 8: Assign main topics to the dataset
+def get_main_topic(corpus, model):
+    topic_weights = model[corpus]
+    main_topic = max(topic_weights, key=lambda x: x[1])[0]  # Get the topic with the highest weight
+    return main_topic
+
+non_rst_cleaned['main_topic'] = [get_main_topic(corp, optimal_model) for corp in corpus]
+
+# Extract topic names
+top_words_per_topic = extract_top_words(optimal_model, 5)
+
+# Assign the topic name correlated with the main topic rank
+non_rst_cleaned['main_topic_name'] = non_rst_cleaned['main_topic'].apply(lambda x: top_words_per_topic[x])
+
+# Step 9: Calculate the frequency of each topic
+topic_frequency = non_rst_cleaned['main_topic_name'].value_counts().reset_index()
+topic_frequency.columns = ['Topic Name', 'Frequency']
+
+# Print the topic frequency summary
+print("\nLDA Topic Frequency Summary:")
+print(topic_frequency)
+
+# Optional: Save to Excel
+topic_frequency.to_excel('lda_topic_frequency_summary.xlsx', index=False)
+
+# Step 10: Plot the distribution of topics
+plt.figure(figsize=(12, 6))
+sns.barplot(x='Topic Name', y='Frequency', data=topic_frequency, palette='coolwarm')
+
+# Adding frequencies on top of bars
+for i, frq in enumerate(topic_frequency['Frequency']):
+    plt.text(i, frq + 5, str(frq), ha='center', fontsize=12, fontweight='bold')
+
+plt.xticks(rotation=45, ha='right', fontsize=12)
+plt.xlabel('Topic Name', fontsize=14)
+plt.ylabel('Frequency', fontsize=14)
+plt.title('LDA Topic Frequency Summary', fontsize=16, weight='bold')
+plt.tight_layout()
+plt.show()
