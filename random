@@ -1,0 +1,105 @@
+# Apply the preprocessing
+non_rst_cleaned['processed_text'] = non_rst_cleaned['combined_text'].apply(lambda x: full_preprocess(x))
+
+# Add cleaning step to remove rows with insufficient information
+def clean_insufficient_rows(text, min_word_count=3):
+    # Tokenize the text
+    words = text.split()
+    # Keep rows only if the text has more than the minimum word count
+    if len(words) >= min_word_count:
+        return text
+    else:
+        return None
+
+# Apply the cleaning function to remove rows with fewer than 3 words
+min_word_count = 3  # Adjust based on your needs
+non_rst_cleaned['cleaned_text'] = non_rst_cleaned['processed_text'].apply(lambda x: clean_insufficient_rows(x, min_word_count))
+
+# Drop rows where the text is None (i.e., rows that had insufficient content)
+non_rst_cleaned.dropna(subset=['cleaned_text'], inplace=True)
+
+# Continue with the remaining steps
+# Step 5: Perform N-gram Analysis
+def get_ngram_freqs(tokens_list, n):
+    ngrams = zip(*[tokens_list[i:] for i in range(n)])
+    return Counter([' '.join(ngram) for ngram in ngrams])
+
+def display_ngrams(ngram_freq, title):
+    ngram_df = pd.DataFrame(ngram_freq.most_common(30), columns=['ngram', 'frequency'])
+    plt.figure(figsize=(12, 6))
+    sns.barplot(x='ngram', y='frequency', data=ngram_df, palette='coolwarm')
+    plt.xticks(rotation=45, ha='right')
+    plt.title(f"Top 30 {title}")
+    plt.show()
+
+tokens = non_rst_cleaned['cleaned_text'].apply(lambda x: x.split())
+unigram_freq = Counter([token for tokens_list in tokens for token in tokens_list])
+bigram_freq = get_ngram_freqs(tokens_list, 2)
+trigram_freq = get_ngram_freqs(tokens_list, 3)
+
+display_ngrams(unigram_freq, 'Unigrams')
+display_ngrams(bigram_freq, 'Bigrams')
+display_ngrams(trigram_freq, 'Trigrams')
+
+# Step 6: LDA Topic Modeling
+def preprocess_lda(text):
+    return text.split()
+
+non_rst_cleaned['tokens'] = non_rst_cleaned['cleaned_text'].apply(preprocess_lda)
+
+processed_texts = non_rst_cleaned['tokens'].tolist()
+
+# Build bigram and trigram models
+bigram = gensim.models.Phrases(processed_texts, min_count=10)
+trigram = gensim.models.Phrases(bigram[processed_texts], min_count=10)
+
+for idx in range(len(processed_texts)):
+    for token in trigram[bigram[processed_texts[idx]]]:
+        if '_' in token:
+            processed_texts[idx].append(token)
+
+dictionary = gensim.corpora.Dictionary(processed_texts)
+dictionary.filter_extremes(no_below=5, no_above=0.5)
+corpus = [dictionary.doc2bow(text) for text in processed_texts]
+
+def compute_coherence_values(dictionary, corpus, texts, limit, start=2, step=2):
+    coherence_values = []
+    model_list = []
+    for num_topics in range(start, limit, step):
+        model = gensim.models.LdaMulticore(corpus=corpus, num_topics=num_topics, id2word=dictionary, passes=10)
+        model_list.append(model)
+        coherencemodel = CoherenceModel(model=model, texts=texts, dictionary=dictionary, coherence='c_v')
+        coherence_values.append(coherencemodel.get_coherence())
+    return model_list, coherence_values
+
+model_list, coherence_values = compute_coherence_values(dictionary, corpus, processed_texts, limit=20, start=2, step=2)
+
+optimal_model = model_list[coherence_values.index(max(coherence_values))]
+
+# Step 7: Extract the top words from each topic
+def extract_top_words(model, num_words):
+    topics = model.show_topics(num_topics=-1, num_words=num_words, formatted=False)
+    return [" ".join([word for word, prob in topic]) for topic_id, topic in topics]
+
+top_words_per_topic = extract_top_words(optimal_model, 10)
+print(top_words_per_topic)
+
+# Step 8: Assign topics to each document
+def get_main_topic(corpus, model):
+    topics = model.get_document_topics(corpus)
+    return max(topics, key=lambda x: x[1])[0]
+
+non_rst_cleaned['main_topic'] = non_rst_cleaned['tokens'].apply(lambda x: get_main_topic(dictionary.doc2bow(x), optimal_model))
+
+# Step 9: Calculate and display topic frequencies
+topic_freq = non_rst_cleaned['main_topic'].value_counts().reset_index()
+topic_freq.columns = ['Topic', 'Frequency']
+print(topic_freq)
+
+# Optional: Visualize the topic distribution
+sns.barplot(x='Topic', y='Frequency', data=topic_freq)
+plt.show()
+
+# Step 10: Visualize with pyLDAvis
+lda_vis = gensimvis.prepare(optimal_model, corpus, dictionary)
+pyLDAvis.display(lda_vis)
