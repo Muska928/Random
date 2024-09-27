@@ -1,0 +1,16 @@
+# Add cleaning step to remove rows with insufficient information
+def clean_insufficient_rows(text, min_word_count=3):
+    # Tokenize the text
+    words = text.split()
+    # Keep rows only if the text has more than the minimum word count
+    if len(words) >= min_word_count:
+        return text
+    else:
+        return None
+
+# Apply the cleaning function to remove rows with fewer than 3 words
+min_word_count = 3  # Adjust based on your needs
+non_rst_cleaned['cleaned_text'] = non_rst_cleaned['processed_text'].apply(lambda x: clean_insufficient_rows(x, min_word_count))
+
+# Drop rows where the text is None (i.e., rows that had insufficient content)
+non_rst_cleaned.dropna(subset=['cleaned_text'], inplace=True)
