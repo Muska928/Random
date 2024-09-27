@@ -1,0 +1,149 @@
+import pandas as pd
+import spacy
+import gensim
+from gensim.models import CoherenceModel
+import matplotlib.pyplot as plt
+import seaborn as sns
+from gensim.corpora import Dictionary
+import numpy as np
+from sklearn.cluster import KMeans
+
+# Load Spacy model
+nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
+
+# Custom preprocessing functions
+def full_preprocess_pipeline(text):
+    text = expand_contractions(text)      # Expand contractions
+    text = text.lower()                   # Lowercase the text
+    text = remove_digits(text)            # Remove digits
+    text = remove_extra_punctuation(text) # Remove extra punctuation
+    text = remove_stopwords(text)         # Remove stopwords
+    text = lemmatize(text)                # Lemmatize the text
+    text = normalize_phrases(text)        # Normalize phrases (bigram/unigram combinations)
+    return text                           # Return preprocessed text
+
+# Add Cleaning step to remove rows with insufficient information
+def clean_insufficient_rows(text, min_word_count=3):
+    words = text.split()
+    if len(words) >= min_word_count:
+        return text
+    else:
+        return None
+
+# Apply the preprocessing and cleaning
+non_rst_cleaned['processed_text'] = non_rst_cleaned['combined_text'].apply(lambda x: full_preprocess_pipeline(x))
+
+# Apply cleaning function for rows with fewer than the minimum word count
+min_word_count = 3  # You can adjust this value
+non_rst_cleaned['cleaned_text'] = non_rst_cleaned['processed_text'].apply(lambda x: clean_insufficient_rows(x, min_word_count))
+
+# Drop rows where 'cleaned_text' is None (i.e., rows that had insufficient content)
+non_rst_cleaned.dropna(subset=['cleaned_text'], inplace=True)
+
+# Print the number of rows retained after cleaning
+num_rows_after_cleaning = len(non_rst_cleaned)
+print(f"Number of rows after cleaning: {num_rows_after_cleaning}")
+
+# Add token count after applying your custom preprocessing
+non_rst_cleaned['token_count'] = non_rst_cleaned['cleaned_text'].apply(lambda x: len(x.split()))
+
+# Apply tokenization (split into tokens) for LDA
+non_rst_cleaned['tokens'] = non_rst_cleaned['cleaned_text'].apply(lambda x: x.split())
+
+# Step 3: Use Bigrams and Trigrams
+bigram = gensim.models.Phrases(non_rst_cleaned['tokens'], min_count=5, threshold=100)
+trigram = gensim.models.Phrases(bigram[non_rst_cleaned['tokens']], threshold=100)
+bigram_mod = gensim.models.phrases.Phraser(bigram)
+trigram_mod = gensim.models.phrases.Phraser(trigram)
+
+# Apply Bigrams and Trigrams
+non_rst_cleaned['tokens'] = non_rst_cleaned['tokens'].apply(lambda tokens: trigram_mod[bigram_mod[tokens]])
+
+# Step 4: Create Dictionary and Corpus for LDA
+dictionary = Dictionary(non_rst_cleaned['tokens'])
+dictionary.filter_extremes(no_below=10, no_above=0.5)  # Adjust vocabulary
+corpus = [dictionary.doc2bow(text) for text in non_rst_cleaned['tokens']]
+
+# Step 5: Compute Coherence Values for Different Numbers of Topics
+def compute_coherence_values(dictionary, corpus, texts, limit, start=2, step=2, alpha='auto', eta='auto'):
+    coherence_values = []
+    model_list = []
+    for num_topics in range(start, limit, step):
+        model = gensim.models.LdaMulticore(corpus=corpus, num_topics=num_topics, id2word=dictionary, passes=20, 
+                                           alpha=alpha, eta=eta, iterations=400)
+        model_list.append(model)
+        coherencemodel = CoherenceModel(model=model, texts=texts, dictionary=dictionary, coherence='c_v')
+        coherence_values.append(coherencemodel.get_coherence())
+    return model_list, coherence_values
+
+# Step 6: Run LDA and Evaluate Coherence
+model_list, coherence_values = compute_coherence_values(dictionary, corpus, non_rst_cleaned['tokens'], 
+                                                        limit=20, start=2, step=2, alpha='asymmetric', eta='auto')
+
+# Plot coherence scores
+x = range(2, 20, 2)
+plt.plot(x, coherence_values)
+plt.xlabel("Number of Topics")
+plt.ylabel("Coherence score")
+plt.title("Coherence Scores for Different Topic Numbers")
+plt.show()
+
+# Select the best model with the highest coherence
+optimal_model = model_list[coherence_values.index(max(coherence_values))]
+print(f"The coherence value of the optimal LDA model is: {max(coherence_values)}")
+
+# Step 7: Extract Topics and Assign Them to Documents
+def extract_top_words(model, num_words):
+    top_words_per_topic = []
+    for topic_id in range(model.num_topics):
+        top_words = model.show_topic(topic_id, num_words)
+        top_words_per_topic.append(" ".join([word for word, prob in top_words]))
+    return top_words_per_topic
+
+def get_main_topic(corpus, model):
+    topic_weights = model[corpus]
+    main_topic = max(topic_weights, key=lambda x: x[1])[0]  # Get the topic with the highest weight
+    return main_topic
+
+non_rst_cleaned['main_topic'] = [get_main_topic(corp, optimal_model) for corp in corpus]
+
+# Extract topic names
+top_words_per_topic = extract_top_words(optimal_model, 5)
+
+# Assign the topic name correlated with the main topic
+non_rst_cleaned['main_topic_name'] = non_rst_cleaned['main_topic'].apply(lambda x: top_words_per_topic[x])
+
+# Step 8: Calculate Topic Frequencies and Save
+topic_frequency = non_rst_cleaned['main_topic_name'].value_counts().reset_index()
+topic_frequency.columns = ['Topic Name', 'Frequency']
+print("\nLDA Topic Frequency Summary:")
+print(topic_frequency)
+
+# Save results to CSV
+non_rst_cleaned.to_csv('non_rst_cleaned_with_topics.csv', index=False)
+
+# Step 9: Plot the Distribution of Topics
+plt.figure(figsize=(12, 6))
+sns.barplot(x='Topic Name', y='Frequency', data=topic_frequency, palette='coolwarm')
+
+# Add frequencies on top of bars
+for i, frq in enumerate(topic_frequency['Frequency']):
+    plt.text(i, frq + 0.5, str(frq), ha='center', fontsize=12, fontweight='bold')
+
+plt.xticks(rotation=45, ha='right', fontsize=12)
+plt.xlabel('Topic Name', fontsize=14)
+plt.ylabel('Frequency', fontsize=14)
+plt.title('LDA Topic Frequency Summary', fontsize=16, weight='bold')
+plt.tight_layout()
+plt.show()
+
+# Step 10: Optionally Cluster Similar Topics (if needed)
+topic_distributions = np.array([dict(optimal_model[doc]) for doc in corpus])
+kmeans = KMeans(n_clusters=5).fit(topic_distributions)
+cluster_labels = kmeans.labels_
+
+# Add cluster labels to the dataset
+non_rst_cleaned['topic_cluster'] = cluster_labels
+
+# Save the clustered topics dataset
+non_rst_cleaned.to_csv('non_rst_cleaned_with_topics_and_clusters.csv', index=False)
