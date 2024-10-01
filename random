@@ -1,4 +1,0 @@
-classify_texts(df_batch)
-print(df_batch[['category', 'explanation']].head())  # Ensure columns are created
-topic_alignment_lda(df_batch)
-print(df_batch[['topic_alignment', 'topic_explanation']].head())  # Ensure columns are created
