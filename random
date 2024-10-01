@@ -1,21 +1,18 @@
-Summary (Key Points):
-Data Cleaning and Rows for Analysis:
-
-Total deals analyzed: 49,074 closed deals.
-Breakdown of deals:
-RST deals: 3,940.
-Non-RST deals: 45,134.
-After removing missing values in text columns:
-Rows available for Non-RST analysis: 33,791.
-After further cleaning (removing rows with fewer than 3 tokens):
-Final Non-RST rows for analysis: 28,603.
-Topics Generated through LDA:
-
-4 major topics identified:
-Topic 1: "Account open client access add" (10,389 occurrences).
-Topic 2: "Balance mm client opportunity connect" (8,526 occurrences).
-Topic 3: "Client business implementation complete year" (5,203 occurrences).
-Topic 4: "Card mm client program spend" (4,485 occurrences).
-Coherence Value:
-
+Business Summary (Key Points):
+	1. Data Cleaning and Rows for Analysis:
+		○ Total deals analyzed: 49,074 closed deals.
+		○ Breakdown of deals:
+			§ RST deals: 3,940.
+			§ Non-RST deals: 45,134.
+		○ After removing missing values in text columns:
+			§ Rows available for Non-RST analysis: 33,791.
+		○ After further cleaning (removing rows with fewer than 3 tokens):
+			§ Final Non-RST rows for analysis: 28,603.
+	2. Topics Generated through LDA:
+		○ 4 major topics identified:
+			§ Topic 1: "Account open client access add" (10,389 occurrences).
+			§ Topic 2: "Balance mm client opportunity connect" (8,526 occurrences).
+			§ Topic 3: "Client business implementation complete year" (5,203 occurrences).
+			§ Topic 4: "Card mm client program spend" (4,485 occurrences).
+	3. Coherence Value:
 The coherence value of the LDA model: 0.53. This indicates a moderate level of topic separation and interpretability for the 4 main topics identified.
