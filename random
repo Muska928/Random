@@ -1,0 +1,57 @@
+# Step 1: Coherence Metric Evaluation
+coherencemodel = CoherenceModel(model=optimal_model, texts=non_rst_cleaned['tokens'], dictionary=dictionary, coherence='c_v')
+coherence_value = coherencemodel.get_coherence()
+print(f"Coherence Score for the Optimal LDA Model: {coherence_value}")
+
+# Step 2: Jaccard Similarity Evaluation
+# This evaluates similarity between topic clusters using Jaccard similarity
+def jaccard_similarity_score(corpus, lda_model, num_topics):
+    topic_distributions = np.array([dict(lda_model[doc]) for doc in corpus])
+    topic_assignments = np.argmax(topic_distributions, axis=1)
+    binary_topic_matrix = np.eye(num_topics)[topic_assignments]
+
+    jaccard_similarities = []
+    for i in range(num_topics):
+        for j in range(i + 1, num_topics):
+            sim = jaccard_score(binary_topic_matrix[:, i], binary_topic_matrix[:, j], average='binary')
+            jaccard_similarities.append((i, j, sim))
+
+    return jaccard_similarities
+
+# Run Jaccard Similarity Evaluation
+num_topics = optimal_model.num_topics
+jaccard_similarities = jaccard_similarity_score(corpus, optimal_model, num_topics)
+
+# Display Jaccard Similarity between topic clusters
+for topic1, topic2, sim in jaccard_similarities:
+    print(f"Jaccard Similarity between Topic {topic1} and Topic {topic2}: {sim}")
+
+# Step 3: Document Distribution Across Topics
+# This shows how many documents are associated with each topic
+def document_distribution(lda_model, corpus):
+    topic_distribution_counts = [len([doc for doc in corpus if max(lda_model[doc], key=lambda x: x[1])[0] == topic])
+                                 for topic in range(lda_model.num_topics)]
+    return topic_distribution_counts
+
+# Run document distribution across topics
+topic_distribution_counts = document_distribution(optimal_model, corpus)
+
+# Display the number of documents per topic
+for topic_id, count in enumerate(topic_distribution_counts):
+    print(f"Number of Documents in Topic {topic_id}: {count}")
+
+# Step 4: Manual Inspection of Top Words in Topics
+# This function displays top words for each topic for manual inspection
+def extract_top_words(model, num_words):
+    top_words_per_topic = []
+    for topic_id in range(model.num_topics):
+        top_words = model.show_topic(topic_id, num_words)
+        top_words_per_topic.append(" ".join([word for word, prob in top_words]))
+    return top_words_per_topic
+
+# Display top words for each topic
+top_words_per_topic = extract_top_words(optimal_model, 10)
+
+# Print top words for manual inspection
+for topic_id, top_words in enumerate(top_words_per_topic):
+    print(f"Top words for Topic {topic_id}: {top_words}")
