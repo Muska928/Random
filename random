@@ -1,9 +1,0 @@
-# Define a small sample batch for testing purposes
-df_batch = df.head(5).copy()  # Adjust the number of rows you want to test
-
-# Run classification and topic alignment for the test batch
-classify_texts(df_batch)
-print(df_batch[['category', 'explanation']].head())  # Ensure columns are created
-
-topic_alignment_lda(df_batch)
-print(df_batch[['topic_alignment', 'topic_explanation']].head())  # Ensure columns are created
