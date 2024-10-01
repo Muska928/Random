@@ -1,4 +1,0 @@
-import time
-while True:
-    print("Keeping session alive...")
-    time.sleep(600)  # Keeps printing every 10 minutes
