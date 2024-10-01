@@ -1,0 +1,23 @@
+Pointers
+Define Objectives and Scope
+Stakeholder Identification
+Requirements Gathering
+Success Criteria
+Solution Design
+Implementation Plan
+Risk Assessment
+Execution
+Evaluation
+Decision Making
+
+Definition
+Clearly define the business problem the AI/ML model aims to address and specify what is included/excluded in the POC.
+Identify key stakeholders, including business leaders, technical teams, and end-users to ensure alignment.
+Collect functional and non-functional requirements like expected outputs, data needs, and infrastructure specifications.
+Define measurable success criteria such as model accuracy, performance improvement, or cost savings.
+Outline the proposed high-level system architecture, components, and technologies under consideration.
+Create a detailed implementation plan with timelines, resources, and responsibilities for all team members.
+Identify potential technical and business risks and develop strategies to mitigate them.
+Implement the POC according to the plan and maintain regular communication with stakeholders.
+Compare POC results against success metrics, document findings, lessons learned, and assess scalability.
+Decide whether to scale the project into production, modify the approach, or terminate based on POC results.
