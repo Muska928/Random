@@ -1,0 +1,67 @@
+1. Business and Client Opportunity Management:
+	• Original Topics:
+		○ Opportunity balance merchant client business (4,029 occurrences)
+		○ Account balance client open entity (3,586 occurrences)
+		○ Client credit balance opportunity Company (2,302 occurrences)
+	• Why Combined: All focus on managing client accounts, business opportunities, and balances.
+2. Client Check, Discussions, and Follow-ups:
+	• Original Topics:
+		○ Client check discuss follow review (2,718 occurrences)
+		○ Deal representation revenue opportunity placeholder (1,128 occurrences)
+	• Why Combined: Both involve client interactions, reviews, and follow-ups.
+3. Card Programs and Banking Services:
+	• Original Topics:
+		○ Card program spend client MM (1,494 occurrences)
+		○ RFP banking service issue bank (1,144 occurrences)
+		○ Bank relationship client check account (1,131 occurrences)
+	• Why Combined: Focus on financial services, card programs, and banking relationships.
+4. Finance and Capital Management:
+	• Original Topics:
+		○ MM LOC capital asopen balance (935 occurrences)
+		○ MM month term finance equipment (841 occurrences)
+		○ Unit construction project property development (517 occurrences)
+	• Why Combined: All related to financial management and capital projects.
+5. Meeting Discussions and Future Plans:
+	• Original Topic:
+		○ Meeting discussion proposal plan Feb (327 occurrences)
+	• Why Kept Separate: Focuses on planning and future meetings, distinct from financial topics.
+
+1. Data Cleaning and Rows for Analysis:
+	• Total deals analyzed: 37,211 closed deals.
+		○ Breakdown of deals:
+			§ RST Deals: 4,239.
+			§ Non-RST Deals: 32,972.
+	• After removing missing text columns:
+		○ Rows available for Non-RST analysis: 22,554.
+	• After further cleaning (removing rows with fewer than 3 tokens):
+		○ Final Non-RST rows for analysis: 20,152.
+2. Topics Generated through LDA:
+	• 12 major topics identified:
+		1. Opportunity balance between merchant and client businesses (4,029 occurrences).
+		2. Account balance and client entity opening (3,586 occurrences).
+		3. Client check, discussions, and follow-up review (2,718 occurrences).
+		4. Client credit balance and opportunity with companies (2,302 occurrences).
+		5. Card programs and client spending management (1,494 occurrences).
+		6. RFP banking service issues for clients (1,144 occurrences).
+		7. Bank relationship and client account checks (1,131 occurrences).
+		8. Deal representation and revenue opportunities (1,128 occurrences).
+		9. MM line of credit (LOC) capital balance management (935 occurrences).
+		10. MM term finance and equipment management (841 occurrences).
+		11. Unit construction project and property development (517 occurrences).
+		12. Meeting discussions and proposals for future plans (327 occurrences).
+Human Mapping:
+	• Topic 1: Opportunity balance between merchant and client businesses (4,029 occurrences).
+	• Topic 2: Account balance management and client entity openings (3,586 occurrences).
+	• Topic 3: Client check, discussions, and review follow-up (2,718 occurrences).
+	• Topic 4: Client credit balance opportunities with companies (2,302 occurrences).
+	• Topic 5: Card programs and client spending management (1,494 occurrences).
+	• Topic 6: RFP banking service issues for clients (1,144 occurrences).
+	• Topic 7: Bank relationships and client account checks (1,131 occurrences).
+	• Topic 8: Deal representation and revenue opportunities (1,128 occurrences).
+	• Topic 9: MM line of credit (LOC) capital balance management (935 occurrences). (MM could refer to millions or money market depending on context)
+	• Topic 10: MM term finance and equipment management (841 occurrences). (MM could refer to millions or money market depending on context)
+	• Topic 11: Unit construction project and property development (517 occurrences).
+	• Topic 12: Meeting discussions and proposals for future plans (327 occurrences).
+3. Coherence Value:
+	• The coherence value of the LDA model is: 0.54.
+In this format, the mention of MM is left ambiguous to represent either millions or money market, as per your request.
