@@ -1,0 +1,72 @@
+# Define the updated prompt template to classify text based on its content
+updated_prompt_template = """
+You are a highly intelligent AI model trained to analyze and classify text based on its content.
+Your task is to:
+1. Summarize the main topic or focus of the following text in 2-3 words.
+2. Provide a brief explanation for why this category fits the text.
+
+### Instructions:
+1. Read the provided text carefully.
+2. Identify the main topic or focus of the text.
+3. Summarize the topic in 2-3 words (e.g., "Client Relationship", "Account Setup").
+4. Provide a short explanation of why you have chosen this category.
+
+Now, classify the following text:
+
+Text: "{input_text}"
+
+Please provide your response in the following format:
+1. Category: [A concise 2-3 word summary of the main topic]
+2. Explanation: [Briefly explain why this classification fits the given text]
+"""
+
+# Maximum Length of input tokens
+max_input_length = 200
+
+# Generate the output in batches
+for i in tqdm(range(0, len(df_sample), batch_size), desc="Processing"):
+    batch_texts = df_sample["combined_text"].iloc[i:i+batch_size].tolist()
+    prompts = [updated_prompt_template.format(input_text=text) for text in batch_texts]
+
+    # Process batches asynchronously
+    batch_responses = generation_pipeline(prompts, max_new_tokens=150, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
+
+    # Extract generated text from batch_responses
+    for response in batch_responses:
+        if isinstance(response, list) and len(response) > 0 and 'generated_text' in response[0]:
+            generated_text = response[0]["generated_text"]
+        elif 'generated_text' in response:
+            generated_text = response['generated_text']
+        else:
+            generated_text = "No valid response"
+        results.append(generated_text)
+
+# Combine the results into a single column
+df_sample['final_response'] = results
+
+# Extract the topic alignment and explanation into separate columns
+def extract_information(text):
+    lines = text.split("\n")
+    category = "Not available"
+    explanation = "Not available"
+    
+    for line in lines:
+        if line.startswith("Category:"):
+            parts = line.split(": ", 1)
+            if len(parts) > 1:
+                category = parts[1]
+        elif line.startswith("Explanation:"):
+            parts = line.split(": ", 1)
+            if len(parts) > 1:
+                explanation = parts[1]
+    
+    return category, explanation
+
+# Apply the extraction function and create new columns
+df_sample[['category', 'explanation']] = df_sample['final_response'].apply(lambda x: pd.Series(extract_information(x)))
+
+# Save the results to a CSV file with the new columns
+df_sample.to_csv('new_Deals_Topic_Classification_Output.csv', index=False)
+
+# Display the DataFrame to verify results
+print(df_sample[['category', 'explanation']])
