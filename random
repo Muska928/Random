@@ -1,0 +1,23 @@
+# Save only the relevant columns
+def save_results(df_sample, start, end, filename='intermediate_results.csv'):
+    # Check if the columns exist before saving
+    if 'category' in df_sample.columns and 'explanation' in df_sample.columns and 'topic_alignment' in df_sample.columns and 'topic_explanation' in df_sample.columns:
+        if not os.path.exists(filename):
+            df_sample[['category', 'explanation', 'topic_alignment', 'topic_explanation']].to_csv(filename, index=False, mode='w')
+        else:
+            df_sample[['category', 'explanation', 'topic_alignment', 'topic_explanation']].to_csv(filename, index=False, mode='a', header=False)
+        print(f"Batch {start}-{end} saved.")
+    else:
+        print(f"Columns missing in batch {start}-{end}. Skipping save.")
+
+# Run classification task
+classify_texts(df_batch)
+print(df_batch.head())  # Check if 'category' and 'explanation' columns are created
+
+# Run topic alignment task
+topic_alignment_lda(df_batch)
+print(df_batch.head())  # Check if 'topic_alignment' and 'topic_explanation' columns are created
+
+
+# Save final results after all batches are processed
+df.to_csv('new_Deals_Topic_Alignment_Output.csv', index=False)
