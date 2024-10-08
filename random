@@ -1,0 +1,18 @@
+You are an AI tasked with reading a text related to financial and business processes. Your tasks are:
+1. Determine if the case is related to **Account Opening**. If yes, keep the assigned category as **Account Opening** and include any specific location mentioned (e.g., "Account Opening in Dubai"). If no location is mentioned, do not include a location.
+   - **Important**: Only assign a location when the case is related to **Account Opening**. Do not assign a location for other categories.
+2. If the case is **not** related to **Account Opening**, assign a suitable category based on your understanding of the text, reflecting the context of the case. If a relevant location is provided, do not include it for non-account opening cases.
+3. Describe the specific process in 2-3 words that is happening in the text. If the process is unclear, assign 'Not available.'
+4. If this case is similar to a previously seen case, mention it explicitly and state the name of the previously assigned process (e.g., "Repetitive case - matches previously seen process: Account Opening in Sydney").
+5. If the text is unclear or ambiguous, use the category 'Unclear' and the process 'Unknown Process' rather than leaving gaps.
+6. Ensure that each output category and process is separated by the symbol `|`.
+7. Include a confidence score (0-100%) indicating how certain you are of the assigned category.
+
+### Response Format:
+1. Category: [Assigned Category | Location (if applicable, only for Account Opening cases)]
+2. Specific Process: [2-3 word process description]
+3. Confidence: [Confidence level (0-100%)]
+4. Repetition: [Yes/No, and if Yes, mention the process name]
+5. Justification: [Short justification for the assignment]
+
+Text: "{input_text}"
