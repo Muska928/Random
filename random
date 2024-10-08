@@ -1,0 +1,170 @@
+import pandas as pd
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from tqdm import tqdm
+import os
+
+# Load data
+df = pd.read_excel('Data/closed_won_final.csv')  # Ensure this path is correct
+df = df.head(10)  # Limiting to only 10 rows for demonstration
+total_rows = len(df)
+
+# Load model and tokenizer
+model_path = "mistral/Mistral-7B-Instruct-v0.2"
+tokenizer = AutoTokenizer.from_pretrained(
+    model_path,
+    trust_remote_code=True,
+    padding_side="left",
+    use_fast=True,
+    add_bos_token=True,
+    add_eos_token=True
+)
+
+tokenizer.pad_token = tokenizer.eos_token
+
+# Model loading
+model = AutoModelForCausalLM.from_pretrained(
+    model_path,
+    trust_remote_code=True,
+    device_map="auto"
+)
+
+# Set up text generation pipeline
+generation_pipeline = pipeline('text-generation', model=model, tokenizer=tokenizer)
+
+# Function to save batch results to disk
+def save_results(df_sample, filename='classification_results_with_flag.csv'):
+    if not os.path.exists(filename):
+        df_sample.to_csv(filename, index=False, mode='w')
+    else:
+        df_sample.to_csv(filename, index=False, mode='a', header=False)
+    print(f"Batch saved to {filename}.")
+
+# Function to classify text, dynamically assign category, provide topic summary, deal success/failure reason, and flag for "Account Opening"
+def classify_texts(df_batch):
+    results = []
+    verification_flags = []
+    topic_summaries = []
+    deal_reasons = []
+    assigned_categories = []
+
+    # Define the improved prompt template for classification and additional tasks
+    updated_prompt_template = """
+    You are a highly intelligent AI model trained to analyze and classify text based on its content. Your task is to:
+    1. Assign an appropriate category based on the context of the text. Do not use predefined categories; infer the category from the context of the text.
+    2. Summarize the main topic of the text in 2-3 words (Topic Categorization).
+    3. If the text describes a deal success or failure, provide a 2-3 word reason for the deal's success or loss (e.g., "Strong Client Relationship" for success or "Product Shortcoming" for failure).
+
+    ### Instructions:
+    1. Read the provided text carefully.
+    2. Assign a category based on the content.
+    3. Summarize the text in 2-3 words for topic categorization.
+    4. Provide a 2-3 word reason for deal success or failure, if applicable.
+
+    Text: "{input_text}"
+
+    ### Response Format:
+    1. Category: [Assigned Category]
+    2. Topic Categorization: [2-3 words summarizing the topic]
+    3. Reason for Deal Success/Failure: [2-3 words reason for success or failure]
+    """
+    
+    batch_texts = df_batch["combined_text"].tolist()
+    
+    # Create prompts and generate responses
+    prompts = [updated_prompt_template.format(input_text=text) for text in batch_texts]
+    batch_responses = generation_pipeline(prompts, max_new_tokens=200, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
+    
+    for response in batch_responses:
+        if isinstance(response, list) and len(response) > 0 and 'generated_text' in response[0]:
+            generated_text = response[0]['generated_text']
+        elif 'generated_text' in response:
+            generated_text = response['generated_text']
+        else:
+            generated_text = "No valid response"
+        results.append(generated_text)
+        
+        # Extract the category, topic summary, and reason for deal success/failure
+        category, topic_summary, deal_reason = extract_category_topic_reason(generated_text)
+        assigned_categories.append(category)
+        topic_summaries.append(topic_summary)
+        deal_reasons.append(deal_reason)
+        
+        # Verify if the assigned category is related to "Account Opening"
+        if "Account Opening" in category:
+            verification_flags.append(True)
+        else:
+            verification_flags.append(False)
+    
+    df_batch['final_response_classify'] = results
+    df_batch['assigned_category'] = assigned_categories
+    df_batch['is_related_to_account_opening'] = verification_flags
+    df_batch['topic_summary'] = topic_summaries
+    df_batch['deal_reason'] = deal_reasons
+
+# Extract the "Category", "Topic Summary" and "Reason for Deal Success/Failure"
+def extract_category_topic_reason(text):
+    lines = text.split("\n")
+    category = "Not available"
+    topic_summary = "Not available"
+    deal_reason = "Not available"
+
+    for line in lines:
+        if line.strip().startswith("1. Category:"):
+            parts = line.split(": ", 1)
+            if len(parts) > 1:
+                category = parts[1].strip()
+        elif line.strip().startswith("2. Topic Categorization:"):
+            parts = line.split(": ", 1)
+            if len(parts) > 1:
+                topic_summary = parts[1].strip()
+        elif line.strip().startswith("3. Reason for Deal Success/Failure:"):
+            parts = line.split(": ", 1)
+            if len(parts) > 1:
+                deal_reason = parts[1].strip()
+    
+    return category, topic_summary, deal_reason
+
+# Main function to process batches without repetition
+def process_batches(df, batch_size):
+    # Clear the intermediate file before starting
+    intermediate_file = 'classification_results_with_flag.csv'
+    if os.path.exists(intermediate_file):
+        os.remove(intermediate_file)
+
+    for start in tqdm(range(0, total_rows, batch_size), desc="Processing Batches"):
+        end = min(start + batch_size, total_rows)
+        
+        # Get the batch to process (ensure unique rows are processed per batch)
+        df_batch = df.iloc[start:end].copy()
+        
+        # Run classification task, add verification flag, topic summary, and deal reason
+        classify_texts(df_batch)
+        
+        # Save intermediate results after processing
+        save_results(df_batch, filename=intermediate_file)
+
+    # Save final combined results to new file after all batches are processed
+    try:
+        df_combined = pd.read_csv(intermediate_file, on_bad_lines='skip')
+        df_combined.to_csv('final_classification_output_with_flag.csv', index=False)
+        print("Final results saved to final_classification_output_with_flag.csv.")
+    except pd.errors.ParserError as e:
+        print(f"Error reading CSV: {e}")
+
+# Run the process with batch size
+process_batches(df, batch_size=5)
+
+# After all batches are processed, load the final CSV and extract category, topic summary, deal reason, and verification flag
+try:
+    df_final = pd.read_csv('final_classification_output_with_flag.csv', on_bad_lines='skip')
+    
+    if not df_final.empty:
+        df_final[['assigned_category', 'topic_summary', 'deal_reason', 'is_related_to_account_opening']] = df_final[['assigned_category', 'topic_summary', 'deal_reason', 'is_related_to_account_opening']]
+        df_final.to_csv('final_classification_output_with_flag.csv', index=False)
+        print("Final results saved to CSV.")
+    
+    # Display the results for verification
+    print(df_final[['assigned_category', 'topic_summary', 'deal_reason', 'is_related_to_account_opening']].head())
+
+except pd.errors.ParserError as e:
+    print(f"Error reading final output CSV: {e}")
