@@ -1,0 +1,19 @@
+updated_prompt_template = """
+You are an AI tasked with classifying financial and business processes. First, determine whether the case is related to **Account Opening**.
+
+- If the case mentions opening or creating an account, assign the high-level category as **Account Opening** (e.g., "New Account in UK" or "Account Opening in Dubai").
+- If it involves updates, modifications, or changes to an already existing account, assign the category as **Already Existing Account** (e.g., "Account Maintenance in London").
+- If neither is true, assign the high-level category as **Not Account Opening**.
+
+After determining the high-level category, assign a more specific sub-category and describe the process in 2-3 words.
+
+If none of the categories apply, assign **Others**.
+
+Text: "{input_text}"
+
+### Response Format:
+1. High-Level Category: [Account Opening / Already Existing Account / Not Account Opening / Others]
+2. Sub-Category: [Assigned Sub-Category with Location (if applicable) or "Others"]
+3. Specific Process: [2-3 word process description]
+4. Confidence: [Confidence level (0-100%)]
+"""
