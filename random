@@ -1,0 +1,87 @@
+def classify_texts(df_batch):
+    assigned_categories = []
+    sub_categories = []
+    specific_processes = []
+    account_opening_flags = []
+    repetition_labels = []
+    confidence_scores = []
+
+    # Define the updated prompt template for high-level and sub-category classification
+    updated_prompt_template = """
+    You are an AI tasked with reading a text related to financial and business processes. First, determine if this case is related to **Account Opening**.
+    
+    - If yes, assign the category as **Account Opening** and include any specific location mentioned (e.g., "Account Opening in Dubai" or "DDA Account Opening in US").
+    - If no, assign it under **Already Existing Account** or **Not Account Opening** based on the context, and include any relevant location (e.g., "Account Maintenance in London" or "Personnel Change in London").
+
+    After categorizing the text into one of these high-level categories, you must also provide a sub-category and describe the specific process in 2-3 words that is happening in the text.
+
+    If none of the categories fit, assign **Others** for both High-Level and Sub-Category.
+
+    Text: "{input_text}"
+
+    ### Response Format:
+    1. High-Level Category: [Account Opening / Already Existing Account / Not Account Opening / Others]
+    2. Sub-Category: [Assigned Sub-Category with Location (if applicable) or "Others"]
+    3. Specific Process: [2-3 word process description]
+    4. Confidence: [Confidence level (0-100%)]
+    """
+
+    batch_texts = df_batch["combined_text"].tolist()
+
+    for text in batch_texts:
+        if text in assignment_memory:
+            assigned_category, sub_category, specific_process, confidence = assignment_memory[text]
+            assigned_categories.append(assigned_category)
+            sub_categories.append(sub_category)
+            specific_processes.append(specific_process)
+            confidence_scores.append(confidence)
+            
+            # Use stricter logic for determining account opening
+            if "Account Opening" in assigned_category:
+                account_opening_flags.append("Yes")
+            else:
+                account_opening_flags.append("No")
+            
+            repetition_labels.append("Repetitive")
+        else:
+            # Create prompt and generate response
+            prompt = updated_prompt_template.format(input_text=text)
+            response = generation_pipeline(prompt, max_new_tokens=200, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
+            
+            # Extract the generated text
+            generated_text = response[0]['generated_text'] if response else "No valid response"
+            
+            # Extract high-level category, sub-category, process, and confidence score
+            high_level_category, sub_category, process, confidence = extract_classification(generated_text)
+            
+            # Handle cases where no category is found
+            if high_level_category == "Not available":
+                high_level_category = "Others"
+            if sub_category == "Not available":
+                sub_category = "Others"
+            
+            # Append results
+            assigned_categories.append(high_level_category)
+            sub_categories.append(sub_category)
+            specific_processes.append(process)
+            confidence_scores.append(confidence)
+            repetition_labels.append("Unique")
+            
+            # Store the result for future reuse
+            assignment_memory[text] = (high_level_category, sub_category, process, confidence)
+            
+            # Stricter check for "Account Opening" flag
+            if high_level_category == "Account Opening":
+                account_opening_flags.append("Yes")
+            else:
+                account_opening_flags.append("No")
+    
+    # Add the classification results, repetition label, confidence score, and flags to the DataFrame
+    df_batch['assigned_category'] = assigned_categories
+    df_batch['sub_category'] = sub_categories
+    df_batch['specific_process'] = specific_processes
+    df_batch['confidence_score'] = confidence_scores
+    df_batch['is_related_to_account_opening'] = account_opening_flags
+    df_batch['repetition_label'] = repetition_labels
+    
+    return df_batch
