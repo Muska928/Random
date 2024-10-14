@@ -1,0 +1,177 @@
+import pandas as pd
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from tqdm import tqdm
+import time  # For measuring time taken
+
+# Load data
+df = pd.read_excel('Data/closed_won_final.csv')  # Ensure this path is correct
+df = df.head(100)  # Limiting to 100 rows for demonstration
+total_rows = len(df)
+
+# Load model and tokenizer
+model_path = "mistral/Mistral-7B-Instruct-v0.2"
+tokenizer = AutoTokenizer.from_pretrained(
+    model_path,
+    trust_remote_code=True,
+    padding_side="left",
+    use_fast=True,
+    add_bos_token=True,
+    add_eos_token=True
+)
+
+tokenizer.pad_token = tokenizer.eos_token
+
+# Model loading
+model = AutoModelForCausalLM.from_pretrained(
+    model_path,
+    trust_remote_code=True,
+    device_map="auto"
+)
+
+# Set up text generation pipeline
+generation_pipeline = pipeline('text-generation', model=model, tokenizer=tokenizer)
+
+# Dictionary to store assignments for reuse and track repetition
+assignment_memory = {}
+
+def classify_texts(df_batch):
+    assigned_categories = []
+    sub_categories = []
+    specific_processes = []
+    repetition_labels = []
+    confidence_scores = []
+
+    # Define the updated prompt template for high-level and sub-category classification
+    dynamic_prompt_template = """
+    You are an AI tasked with classifying financial and business process texts. For each text, first **understand the context** and then classify it into one of the following main categories, subcategories, or assign it to "Other" if none of the categories fit. If none of the subcategories fit, assign the subcategory to "Other" under the relevant main category.
+
+    **Main Categories:**
+    1. **Account Management** (e.g., New Account Opening, Existing Account Management, Account Modification, Account Setup)
+       - Subcategories: New Account (e.g., "New Account International"), Account Modification, Incremental Account, Account Transfer
+
+    2. **Client Services** (e.g., Client Onboarding, Client Support, Client Mandate, Client Interest)
+       - Subcategories: Client Onboarding, Client Mandate, Client Deposit, Client Request, Client Interest
+
+    3. **Financial Services** (e.g., Transaction Processing, Treasury Solutions, SWIFT Connectivity)
+       - Subcategories: Transaction Processing (e.g., SWIFT, ACH), Treasury Solutions, Funding Transfer
+
+    4. **Other Processes** (e.g., Regulatory Compliance, System Upgrades, Market Disruption)
+       - Subcategories: System Development, Market Disruption, Vault Services, H2H Connectivity
+
+    5. **Other**: If the text does not match any of the above categories, classify it as "Other" and assign a relevant sub-category or "Other" if no sub-category fits.
+
+    For each text, provide a high-level category, a relevant sub-category with specifics, and a 2-3 word process description based on the context.
+
+    Text: "{input_text}"
+
+    ### Response Format:
+    1. Main Category: [Account Management / Client Services / Financial Services / Other Processes / Other]
+    2. Sub-Category: [Assigned Sub-Category with details (if applicable) or "Other"]
+    3. Specific Process: [2-3 word description]
+    4. Confidence: [Confidence level (0-100%)]
+    """
+
+    batch_texts = df_batch["combined_text"].tolist()
+
+    for text in batch_texts:
+        if text in assignment_memory:
+            assigned_category, sub_category, specific_process, confidence = assignment_memory[text]
+            assigned_categories.append(assigned_category)
+            sub_categories.append(sub_category)
+            specific_processes.append(specific_process)
+            confidence_scores.append(confidence)
+            
+            repetition_labels.append("Repetitive")
+        else:
+            # Create prompt and generate response
+            prompt = dynamic_prompt_template.format(input_text=text)
+            response = generation_pipeline(prompt, max_new_tokens=200, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
+            
+            # Extract the generated text
+            generated_text = response[0]['generated_text'] if response else "No valid response"
+            
+            # Extract high-level category, sub-category, process, and confidence score
+            high_level_category, sub_category, process, confidence = extract_classification(generated_text)
+            
+            # Handle cases where no category is found
+            if high_level_category == "Not available":
+                high_level_category = "Other"
+            if sub_category == "Not available":
+                sub_category = "Other"
+            
+            # Append results
+            assigned_categories.append(high_level_category)
+            sub_categories.append(sub_category)
+            specific_processes.append(process)
+            confidence_scores.append(confidence)
+            repetition_labels.append("Unique")
+            
+            # Store the result for future reuse
+            assignment_memory[text] = (high_level_category, sub_category, process, confidence)
+    
+    # Add the classification results, repetition label, and confidence score to the DataFrame
+    df_batch['assigned_category'] = assigned_categories
+    df_batch['sub_category'] = sub_categories
+    df_batch['specific_process'] = specific_processes
+    df_batch['confidence_score'] = confidence_scores
+    df_batch['repetition_label'] = repetition_labels
+    
+    return df_batch
+
+# Extract the high-level category, sub-category, specific process, and confidence score from the generated text
+def extract_classification(text):
+    # Split the text into lines
+    lines = text.split("\n")
+    high_level_category = "Not available"
+    sub_category = "Not available"
+    specific_process = "Not available"
+    confidence = "Not available"
+
+    # Loop through the lines to find the high-level category, sub-category, and confidence score
+    for line in lines:
+        line = line.strip()
+        if line.startswith("1. Main Category:"):
+            high_level_category = line.split(": ", 1)[1].strip() if ": " in line else "Not available"
+        elif line.startswith("2. Sub-Category:"):
+            sub_category = line.split(": ", 1)[1].strip() if ": " in line else "Not available"
+        elif line.startswith("3. Specific Process:"):
+            specific_process = line.split(": ", 1)[1].strip() if ": " in line else "Not available"
+        elif line.startswith("4. Confidence:"):
+            confidence = line.split(": ", 1)[1].strip() if ": " in line else "Not available"
+    
+    return high_level_category, sub_category, specific_process, confidence
+
+# Main function to process batches
+def process_batches(df, batch_size):
+    all_results = pd.DataFrame()
+
+    # Measure the start time
+    start_time = time.time()
+
+    for start in tqdm(range(0, total_rows, batch_size), desc="Processing Batches"):
+        end = min(start + batch_size, total_rows)
+        
+        # Get the batch to process
+        df_batch = df.iloc[start:end].copy()
+        
+        # Run classification task
+        df_batch = classify_texts(df_batch)
+        
+        # Append the classified results to the full dataframe
+        all_results = pd.concat([all_results, df_batch], ignore_index=True)
+
+    # Measure the end time
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Time taken to process {len(df)} records: {elapsed_time:.2f} seconds")
+
+    # Save final combined results to new file after all batches are processed
+    all_results.to_csv('final_classification_output_with_confidence.csv', index=False)
+    print("Final results saved to final_classification_output_with_confidence.csv.")
+
+# Run the process with batch size
+process_batches(df, batch_size=10)
+
+# Check the final DataFrame content
+df_final = pd.read_csv('final_classification_output_with_confidence.csv')
+print(df_final.head())
