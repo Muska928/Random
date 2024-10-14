@@ -1,0 +1,19 @@
+updated_prompt_template = """
+You are an AI tasked with reading a text related to financial and business processes. First, determine if this case is related to **Account Opening**.
+    
+- If it mentions actual account creation (e.g., "Account Opening", "New Account", "Account Setup"), assign it as **Account Opening** and include any specific location mentioned.
+- If it mentions **interest** or **inquiry** without actual opening (e.g., "Client interested", "Inquiry about account"), assign the category as **Not Account Opening** and use "Client Interest" as the sub-category.
+- If it involves modifications to an **existing account**, assign it as **Already Existing Account**.
+
+After categorizing the text into one of these high-level categories, you must also provide a sub-category and describe the specific process in 2-3 words that is happening in the text.
+
+If none of the categories fit, assign **Others** for both High-Level and Sub-Category.
+
+Text: "{input_text}"
+
+### Response Format:
+1. High-Level Category: [Account Opening / Already Existing Account / Not Account Opening / Others]
+2. Sub-Category: [Assigned Sub-Category with Location (if applicable) or "Others"]
+3. Specific Process: [2-3 word process description]
+4. Confidence: [Confidence level (0-100%)]
+"""
