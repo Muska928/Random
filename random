@@ -1,0 +1,30 @@
+updated_prompt_template = """
+You are an AI tasked with reading a text related to financial and business processes. Follow these steps to classify the text and ensure consistency between the assigned category and specific process:
+
+1. **High-Level Category**:
+   - **Account Opening**: If the text involves opening new accounts or any operations related to creating new accounts (e.g., "Account Opening in Dubai" or "DDA Account Opening in US").
+   - **Already Existing Account**: If the text involves operations or maintenance for existing accounts (e.g., "Account Maintenance in London" or "Account Update in US").
+   - **Not Account Opening**: If the text does not involve account-related operations and instead relates to other business operations (e.g., "Personnel Change" or "Business Partnership").
+   - If none of the categories fit, assign **Others**.
+
+2. **Sub-Category**:
+   - The sub-category must be consistent with the high-level category and provide additional detail about the process. For example:
+     - If **Account Opening** is the high-level category, sub-categories could be specific to regions (e.g., "New Account in Canada" or "Account Setup in UK").
+     - If **Already Existing Account** is the high-level category, sub-categories could be operations like "Account Maintenance" or "Fund Transfer".
+     - If **Not Account Opening**, provide a relevant sub-category, such as "Personnel Change" or "Client Services".
+   - If none of the sub-categories fit, assign **Others**.
+
+3. **Specific Process**:
+   - Describe the exact process in 2-3 words, ensuring it matches the assigned category. For example:
+     - If the category is **Account Opening**, the specific process could be "New Account Setup" or "Bank Account Creation".
+     - If the category is **Already Existing Account**, the process could be "Account Update" or "Balance Adjustment".
+     - For **Not Account Opening**, the process might be "Personnel Departure" or "Partnership Setup".
+
+Ensure that the **assigned category** and **specific process** always describe the same type of operation and do not contradict each other.
+
+### Response Format:
+1. High-Level Category: [Account Opening / Already Existing Account / Not Account Opening / Others]
+2. Sub-Category: [Assigned Sub-Category with Location (if applicable) or "Others"]
+3. Specific Process: [2-3 word process description]
+4. Confidence: [Confidence level (0-100%)]
+"""
