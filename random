@@ -1,0 +1,163 @@
+import pandas as pd
+import re
+import matplotlib.pyplot as plt
+import seaborn as sns
+from wordcloud import WordCloud
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+import torch
+from tqdm import tqdm
+import time
+
+model_path = "mistral/Mistral-7B-Instruct-v0.2"
+tokenizer = AutoTokenizer.from_pretrained(
+    model_path,
+    padding_side="left",
+    use_fast=True,
+    add_bos_token=True,
+    add_eos_token=True
+)
+
+tokenizer.pad_token = tokenizer.eos_token
+
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16
+)
+
+model = AutoModelForCausalLM.from_pretrained(
+    model_path,
+    quantization_config=bnb_config,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+    trust_remote_code=True
+)
+
+model.config.use_cache = False
+model.config.pretraining_tp = 1
+model.gradient_checkpointing_enable()
+
+# Initialize the memory dictionary
+assignment_memory = {}
+
+df = pd.read_csv('Data/closed_won_final.csv')
+df = df.head(1000)
+total_rows = len(df)
+
+def classify_texts(df_batch):
+    assigned_categories = []
+    sub_categories = []
+    specific_processes = []
+    account_opening_flags = []
+
+    updated_prompt_template = """
+    You are an AI tasked with reading a text related to financial and business processes. First, determine if this case is related to **Account Opening**.
+
+    - If it mentions actual account creation (e.g., "Account Opening", "New Account", "Account Setup"), assign it as **Account Opening** and include any specific location mentioned.
+    - If it mentions **interest** or **inquiry** without actual opening (e.g., "Client interested", "Inquiry about account"), assign the category as **Not Account Opening** and use "Client Interest" as the sub-category.
+    - If it involves modifications to an **existing account**, assign it as **Already Existing Account**.
+
+    After categorizing the text into one of these high-level categories, you must also provide a sub-category and describe the specific process in 2-3 words that is happening in the text.
+
+    If none of the categories fit, assign **Others** for both High-Level and Sub-Category.
+
+    Text: "{input_text}"
+
+    ### Response Format:
+    1. High-Level Category: [Account Opening / Already Existing Account / Not Account Opening / Others]
+    2. Sub-Category: [Assigned Sub-Category with Location (if applicable) or "Others"]
+    3. Specific Process: [2-3 word process description]
+    """
+
+    batch_texts = df_batch["combined_text"].tolist()
+
+    for text in batch_texts:
+        if text in assignment_memory:
+            assigned_category, sub_category, specific_process = assignment_memory[text]
+            assigned_categories.append(assigned_category)
+            sub_categories.append(sub_category)
+            specific_processes.append(specific_process)
+
+            if "Account Opening" in assigned_category:
+                account_opening_flags.append("Yes")
+            else:
+                account_opening_flags.append("No")
+        else:
+            prompt = updated_prompt_template.format(input_text=text)
+
+            # Explicit tokenization with input token limit
+            input_tokens = tokenizer(prompt, max_length=512, truncation=True, return_tensors='pt')
+
+            # Generate output using the model's generate method
+            output = model.generate(input_tokens['input_ids'], max_new_tokens=200, pad_token_id=tokenizer.eos_token_id)
+            
+            generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+
+            high_level_category, sub_category, process = extract_classification(generated_text)
+
+            if high_level_category == "Not available":
+                high_level_category = "Others"
+            if sub_category == "Not available":
+                sub_category = "Others"
+
+            assigned_categories.append(high_level_category)
+            sub_categories.append(sub_category)
+            specific_processes.append(process)
+            
+            if high_level_category == "Account Opening":
+                account_opening_flags.append("Yes")
+            else:
+                account_opening_flags.append("No")
+
+            assignment_memory[text] = (high_level_category, sub_category, process)
+
+    df_batch['assigned_category'] = assigned_categories
+    df_batch['sub_category'] = sub_categories
+    df_batch['specific_process'] = specific_processes
+    df_batch['is_related_to_account_opening'] = account_opening_flags
+
+    return df_batch
+
+def extract_classification(text):
+    lines = text.split("\n")
+    high_level_category = "Not available"
+    sub_category = "Not available"
+    specific_process = "Not available"
+
+    for line in lines:
+        line = line.strip()
+        if line.startswith("1. High-Level Category:"):
+            high_level_category = line.split(": ", 1)[1].strip() if ": " in line else "Not available"
+        elif line.startswith("2. Sub-Category:"):
+            sub_category = line.split(": ", 1)[1].strip() if ": " in line else "Not available"
+        elif line.startswith("3. Specific Process:"):
+            specific_process = line.split(": ", 1)[1].strip() if ": " in line else "Not available"
+
+    return high_level_category, sub_category, specific_process
+
+def process_batches(df, batch_size):
+    all_results = pd.DataFrame()
+
+    start_time = time.time()
+
+    for start in tqdm(range(0, total_rows, batch_size), desc="Processing Batches"):
+        end = min(start + batch_size, total_rows)
+
+        df_batch = df.iloc[start:end].copy()
+
+        df_batch = classify_texts(df_batch)
+
+        all_results = pd.concat([all_results, df_batch], ignore_index=True)
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Time taken to process {len(df)} records: {elapsed_time:.2f} seconds")
+
+    all_results.to_csv('final_classification_output.csv', index=False)
+    print("Final results saved to final_classification_output.csv.")
+
+process_batches(df, batch_size=100)
+
+df_final = pd.read_csv('final_classification_output.csv')
+print(df_final.head())
