@@ -1,0 +1,13 @@
+Current Cost-Saving Measures:
+Model Quantization (4-bit Precision):
+
+Your model is using 4-bit quantization, which reduces the memory footprint and computational load. This results in faster inference times and lower GPU/CPU usage, saving on cloud compute costs.
+Device Mapping (device_map="auto"):
+
+Automatically mapping the model to the best available device (e.g., GPU) ensures optimal use of hardware, leading to faster processing and lower costs.
+Token Limiting (Input and Output):
+
+You’ve set a limit on both input and output tokens, which ensures that the model processes shorter sequences. This reduces compute time and the associated resource consumption, further cutting costs.
+Batch Processing:
+
+Processing the dataset in batches ensures memory-efficient operations. This avoids overloading the system and helps in managing computational resources effectively.
