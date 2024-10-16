@@ -38,9 +38,6 @@ model.config.use_cache = False
 model.config.pretraining_tp = 1
 model.gradient_checkpointing_enable()
 
-# Initialize the memory dictionary
-assignment_memory = {}
-
 df = pd.read_csv('Data/closed_won_final.csv')
 df = df.head(1000)
 total_rows = len(df)
@@ -73,44 +70,31 @@ def classify_texts(df_batch):
     batch_texts = df_batch["combined_text"].tolist()
 
     for text in batch_texts:
-        if text in assignment_memory:
-            assigned_category, sub_category, specific_process = assignment_memory[text]
-            assigned_categories.append(assigned_category)
-            sub_categories.append(sub_category)
-            specific_processes.append(specific_process)
+        prompt = updated_prompt_template.format(input_text=text)
 
-            if "Account Opening" in assigned_category:
-                account_opening_flags.append("Yes")
-            else:
-                account_opening_flags.append("No")
+        # Explicit tokenization with input token limit
+        input_tokens = tokenizer(prompt, max_length=512, truncation=True, return_tensors='pt')
+
+        # Generate output using the model's generate method
+        output = model.generate(input_tokens['input_ids'], max_new_tokens=200, pad_token_id=tokenizer.eos_token_id)
+        
+        generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+
+        high_level_category, sub_category, process = extract_classification(generated_text)
+
+        if high_level_category == "Not available":
+            high_level_category = "Others"
+        if sub_category == "Not available":
+            sub_category = "Others"
+
+        assigned_categories.append(high_level_category)
+        sub_categories.append(sub_category)
+        specific_processes.append(process)
+        
+        if high_level_category == "Account Opening":
+            account_opening_flags.append("Yes")
         else:
-            prompt = updated_prompt_template.format(input_text=text)
-
-            # Explicit tokenization with input token limit
-            input_tokens = tokenizer(prompt, max_length=512, truncation=True, return_tensors='pt')
-
-            # Generate output using the model's generate method
-            output = model.generate(input_tokens['input_ids'], max_new_tokens=200, pad_token_id=tokenizer.eos_token_id)
-            
-            generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
-
-            high_level_category, sub_category, process = extract_classification(generated_text)
-
-            if high_level_category == "Not available":
-                high_level_category = "Others"
-            if sub_category == "Not available":
-                sub_category = "Others"
-
-            assigned_categories.append(high_level_category)
-            sub_categories.append(sub_category)
-            specific_processes.append(process)
-            
-            if high_level_category == "Account Opening":
-                account_opening_flags.append("Yes")
-            else:
-                account_opening_flags.append("No")
-
-            assignment_memory[text] = (high_level_category, sub_category, process)
+            account_opening_flags.append("No")
 
     df_batch['assigned_category'] = assigned_categories
     df_batch['sub_category'] = sub_categories
