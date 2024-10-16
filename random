@@ -1,2 +1,0 @@
-print("Extracted classification:", high_level_category, sub_category, process)
-print("Extracted classification:", high_level_category, sub_category, process)
