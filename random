@@ -1,0 +1,160 @@
+
+# Load Data
+df = pd.read_csv('closed_won_final.csv')
+df = df.head(10)  # Limiting to 1000 rows for demonstration
+total_rows = len(df)
+
+# Dictionary for caching results to avoid redundant computations
+classification_cache = {}
+
+# Function to chunk text based on token length
+def chunk_text(text, max_length=128):
+    tokens = tokenizer.encode(text, truncation=False)
+    # Split tokens into chunks of size `max_length`
+    return [tokens[i:i+max_length] for i in range(0, len(tokens), max_length)]
+
+# Function to classify texts with chunking and caching
+def classify_texts(df_batch):
+    assigned_categories = []
+    sub_categories = []
+    specific_processes = []
+    account_opening_flags = []
+
+    updated_prompt_template = """
+    You are an AI tasked with reading a text related to financial and business processes. First, determine if this case is related to **Account Opening**.
+
+    - If it mentions actual account creation (e.g., "Account Opening", "New Account", "Account Setup"), assign it as **Account Opening** and include any specific location mentioned.
+    - If it mentions **interest** or **inquiry** without actual opening (e.g., "Client interested", "Inquiry about account"), assign the category as **Not Account Opening** and use "Client Interest" as the sub-category.
+    - If it involves modifications to an **existing account**, assign it as **Already Existing Account**.
+
+    After categorizing the text into one of these high-level categories, you must also provide a sub-category and describe the specific process in 2-3 words that is happening in the text.
+
+    If none of the categories fit, assign **Others** for both High-Level and Sub-Category.
+
+    Text: "{input_text}"
+
+    ### Response Format:
+    1. High-Level Category: [Account Opening / Already Existing Account / Not Account Opening / Others]
+    2. Sub-Category: [Assigned Sub-Category with Location (if applicable) or "Others"]
+    3. Specific Process: [2-3 word process description]
+    """
+
+    batch_texts = df_batch["combined_text"].tolist()
+
+    for text in batch_texts:
+        if text in classification_cache:
+            # Use cached result if available
+            final_high_level_category, final_sub_category, final_specific_process = classification_cache[text]
+        else:
+            prompt = updated_prompt_template.format(input_text=text)
+
+            # Chunk the input text if it's too long
+            text_chunks = chunk_text(prompt, max_length=128)
+
+            # Variables to combine the results from multiple chunks
+            combined_high_level_category = []
+            combined_sub_category = []
+            combined_specific_process = []
+
+            for chunk in text_chunks:
+                input_tokens = torch.tensor([chunk]).to(model.device)
+
+                # Generate output with a max limit of 200 tokens
+                output = model.generate(input_tokens, max_new_tokens=200, pad_token_id=tokenizer.eos_token_id)
+
+                # Decode generated output for the chunk
+                generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+
+                # Extract the categories, sub-categories, and process from the chunk
+                high_level_category, sub_category, process = extract_classification(generated_text)
+
+                combined_high_level_category.append(high_level_category)
+                combined_sub_category.append(sub_category)
+                combined_specific_process.append(process)
+
+            # Aggregate chunk results
+            if combined_high_level_category:
+                final_high_level_category = max(set(combined_high_level_category), key=combined_high_level_category.count)
+            else:
+                final_high_level_category = "Not available"
+            
+            if combined_sub_category:
+                final_sub_category = max(set(combined_sub_category), key=combined_sub_category.count)
+            else:
+                final_sub_category = "Not available"
+            
+            if combined_specific_process:
+                final_specific_process = ' '.join(combined_specific_process)
+            else:
+                final_specific_process = "Not available"
+
+            # Cache the result
+            classification_cache[text] = (final_high_level_category, final_sub_category, final_specific_process)
+
+        assigned_categories.append(final_high_level_category)
+        sub_categories.append(final_sub_category)
+        specific_processes.append(final_specific_process)
+
+        if final_high_level_category == "Account Opening":
+            account_opening_flags.append("Yes")
+        else:
+            account_opening_flags.append("No")
+
+    df_batch['assigned_category'] = assigned_categories
+    df_batch['sub_category'] = sub_categories
+    df_batch['specific_process'] = specific_processes
+    df_batch['is_related_to_account_opening'] = account_opening_flags
+
+    return df_batch
+
+# Function to extract categories, sub-categories, and specific processes
+def extract_classification(text):
+    lines = text.split("\n")
+    high_level_category = "Not available"
+    sub_category = "Not available"
+    specific_process = "Not available"
+
+    for line in lines:
+        line = line.strip()
+        if line.startswith("1. High-Level Category:"):
+            high_level_category = line.split(": ", 1)[1].strip() if ": " in line else "Not available"
+        elif line.startswith("2. Sub-Category:"):
+            sub_category = line.split(": ", 1)[1].strip() if ": " in line else "Not available"
+        elif line.startswith("3. Specific Process:"):
+            specific_process = line.split(": ", 1)[1].strip() if ": " in line else "Not available"
+
+    return high_level_category, sub_category, specific_process
+
+# Process data in batches
+def process_batches(df, batch_size):
+    all_results = pd.DataFrame()
+
+    start_time = time.time()
+
+    for start in tqdm(range(0, total_rows, batch_size), desc="Processing Batches"):
+        end = min(start + batch_size, total_rows)
+
+        df_batch = df.iloc[start:end].copy()
+
+        # Run classification task for the batch
+        df_batch = classify_texts(df_batch)
+
+        # Concatenate results into the full dataframe
+        all_results = pd.concat([all_results, df_batch], ignore_index=True)
+
+    # Measure total time taken
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Time taken to process {len(df)} records: {elapsed_time:.2f} seconds")
+
+    # Save final combined results to a CSV file
+    all_results.to_csv('final_classification_output.csv', index=False)
+    print("Final results saved to final_classification_output.csv.")
+
+# Running the batch process with batch size of 100
+process_batches(df, batch_size=1)
+
+# Display the first few rows of the final output
+df_final = pd.read_csv('final_classification_output.csv')
+print("First few rows of the final saved output:")
+print(df_final.head())
