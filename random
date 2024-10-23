@@ -1,0 +1,63 @@
+prompt_template = """
+You are an AI tasked with classifying financial and business process texts. First, **understand the context** of the text and classify it into one of the following main categories and subcategories. If none of the categories fit, assign it to "Other" with a relevant sub-category where possible. Each category should be followed by a process description. Make sure to provide the output in the exact format with clear separation of categories.
+
+**High-Level Categories and Subcategories with Examples:**
+
+1. **Product Capability**: Classify here if the text mentions product offerings or features related to banking, treasury services, payments, or product performance.
+   - **Subcategories**:
+     - ACH Direct Send (e.g., "Client requested an ACH Direct Send setup.")
+     - BAI Reporting (e.g., "BAI Reporting for treasury services requested by client.")
+     - Treasury Services (e.g., "Comprehensive treasury services provided.")
+     - ACH Capabilities (e.g., "Client is utilizing ACH for transactions.")
+     - EFT Processing (e.g., "EFT processing is enabled for client payments.")
+
+2. **Client-Specific Solutions**: Classify here if the text discusses solutions tailored to specific clients, such as customization or specific account setups.
+   - **Subcategories**:
+     - Customization (e.g., "Tailored reporting solution delivered for client’s unique needs.")
+     - Account Setup (e.g., "New international account setup for client.")
+     - Currency Accounts (e.g., "Multi-currency account established for the client.")
+     - Tailored Solutions (e.g., "Customized treasury solution provided for specific client requests.")
+
+3. **Market Disruption**: Classify here if the text is about market fluctuations, competitor actions, or general instability in the market.
+   - **Subcategories**:
+     - Market Stability (e.g., "Client requested market stability measures during volatility.")
+     - Competitor Switching (e.g., "Client switched to us due to competitor service disruptions.")
+     - PEO Clients (e.g., "PEO client services affected by competitor’s product issues.")
+     - Market Volatility (e.g., "Market volatility impacted client's treasury services.")
+
+4. **Relationship and Wallet Share**: Classify here if the text talks about strengthening relationships with clients or growing the client’s business with new products/services.
+   - **Subcategories**:
+     - Relationship Expansion (e.g., "Client has agreed to expand relationship with new services.")
+     - Wallet Share Growth (e.g., "Achieved wallet share growth through cross-selling products.")
+     - Additional Services (e.g., "Client requested additional treasury services.")
+     - Revenue Growth (e.g., "Client relationship resulted in significant revenue growth.")
+
+5. **Geographical Expansion**: Classify here if the text mentions expanding into new regions, international account setups, or cross-border transactions.
+   - **Subcategories**:
+     - New Regions (e.g., "Expansion into Asia Pacific region with new client accounts.")
+     - International Accounts (e.g., "Opening of international accounts for client operations.")
+     - Cross-border Transactions (e.g., "Enabled cross-border transactions for global operations.")
+
+6. **Competitor Comparison**: Classify here if the text mentions competitive analysis, comparing pricing, or service advantages over competitors.
+   - **Subcategories**:
+     - Service Advantages (e.g., "Client chose us for service advantages over competitors.")
+     - Pricing Comparisons (e.g., "Pricing comparison shows favorable rates versus competitors.")
+     - Competitive Analysis (e.g., "Analysis of competitors’ offerings revealed gaps in their services.")
+
+7. **Client Onboarding and Implementation**: Classify here if the text discusses the process of onboarding clients or implementing services.
+   - **Subcategories**:
+     - Smooth Transition (e.g., "Client experienced a smooth transition during onboarding.")
+     - Service Implementation (e.g., "Successful implementation of client’s requested services.")
+     - Client Onboarding (e.g., "New client onboarding completed for treasury services.")
+
+8. **Other**: If the text does not match any of the above categories, classify it as "Other" with a relevant sub-category (e.g., "Not available").
+
+For each text, provide a 2-3 word process description along with the Category and Subcategory.
+Text: "{input_text}"
+
+### Response Format:
+1. Category: [Geographical Expansion, etc.]
+2. Subcategory: [New Accounts, etc.]
+3. Process Description: [New Account Setup, etc.]
+"""
+
