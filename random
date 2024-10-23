@@ -1,0 +1,36 @@
+    prompt_template = """
+    You are an AI tasked with classifying financial and business process texts. First, **understand the context** of the text and classify it into one of the following main categories and subcategories. If none of the categories fit, assign it to "Other" with a relevant sub-category where possible.
+
+    **Main Categories:**
+    1. **Product Capability** (e.g., Strong product offerings such as ACH Direct Send, BAI reporting, comprehensive treasury services)
+       - Subcategories: ACH Direct Send, BAI Reporting, Treasury Services
+
+    2. **Client-Specific Solutions** (e.g., Customization, Responsiveness to client needs, New Account Setups, Specific Currency Accounts)
+       - Subcategories: Customization, Account Setup, Currency Accounts
+
+    3. **Market Disruption** (e.g., Clients seeking stability during market disruptions, PEO clients switching from competitors)
+       - Subcategories: Market Stability, Competitor Switching, PEO Clients
+
+    4. **Relationship and Wallet Share** (e.g., Expanding existing relationships, Increasing wallet share through additional services)
+       - Subcategories: Relationship Expansion, Wallet Share Growth, Additional Services
+
+    5. **Geographical Expansion** (e.g., Opening accounts in new regions or international entities)
+       - Subcategories: New Regions, International Accounts
+
+    6. **Competitor Comparison** (e.g., Highlighting advantages over competitors in service offerings or pricing)
+       - Subcategories: Service Advantages, Pricing Comparisons
+
+    7. **Client Onboarding and Implementation** (e.g., Efficient onboarding, Successful implementation of services)
+       - Subcategories: Smooth Transition, Service Implementation, Client Onboarding
+
+    8. **Other**: If the text does not match any of the above categories, classify it as "Other" with a relevant sub-category.
+
+    For each text, provide the main category, a relevant sub-category with specifics, and a 2-3 word process description based on the context.
+
+    Text: "{input_text}"
+
+    ### Response Format:
+    1. Main Category: [Product Capability / Client-Specific Solutions / Market Disruption / Relationship and Wallet Share / Geographical Expansion / Competitor Comparison / Client Onboarding and Implementation / Other]
+    2. Sub-Category: [Assigned Sub-Category with details (if applicable) or "Other"]
+    3. Specific Process: [2-3 word description]
+    """
