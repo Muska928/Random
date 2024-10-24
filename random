@@ -1,0 +1,102 @@
+# Define the updated prompt template
+prompt_template = """
+You are an AI tasked with classifying financial and business process texts. For each text, first understand the context and then classify it into one of the following main categories, subcategories, or assign it to "Other" if none of the categories fit.
+
+**Main Categories:**
+
+1. **Product Capability** (e.g., Strong product offerings such as ACH Direct Send, BAI reporting, treasury services, financial services)
+   - Subcategories: ACH Direct Send, BAI Reporting, Treasury Services, Cash Management Solutions, Reporting Enhancements, Other Product Capability, Financial Services (e.g., Transaction Processing, Treasury Solutions, SWIFT Connectivity)
+       - Transaction Processing (e.g., SWIFT, ACH), Treasury Solutions, Funding Transfer
+
+2. **Client-Specific Solutions** (e.g., Tailored solutions to meet client needs, including account management, client services, and operational adjustments)
+   - Subcategories: New Account (e.g., "New Account International," Corporate DDA Opening, Multi-currency Account Setup), Account Modification (Account Maintenance, Currency Adjustments, Limits Changes), Incremental Account (Subsidiary Account Addition, Multiple Account Setup), Account Transfer (Cross-border Transfers, Entity Transfers, Currency Switch), Client Onboarding (Smooth Onboarding, Initial Setup, Implementation Services), Client Support (e.g., Assisting clients with operational support, solving daily banking issues), Client Mandate (e.g., Corporate Client Mandate, Legal Entity Directive, Mandate Changes), Client Deposit (e.g., Liquidity Management, Multi-currency Deposits), Client Request (e.g., Handling client-initiated requests or customizations), Client Interest (e.g., Managing client interest, specific service-related inquiries)
+
+3. **Market Disruption** (e.g., Stability during market disruptions leading clients to switch from competitors)
+   - Subcategories: Competitor Switch, Market Disruption, Stability Offering
+
+4. **Relationship and Wallet Share** (e.g., Expanding relationships and increasing wallet share by offering additional services)
+   - Subcategories: Relationship Expansion, Additional Services, Increased Wallet Share
+
+5. **Geographical Expansion** (e.g., Opening accounts in new regions or international entities)
+   - Subcategories: New Region Account, International Expansion, Global Growth
+
+6. **Competitor Comparison** (e.g., Highlighting advantages over competitors, particularly in pricing and service offerings)
+   - Subcategories: Pricing Advantages, Service Comparison, Competitor Analysis
+
+7. **Client Onboarding and Implementation** (e.g., Efficient onboarding and smooth transitions, effective delivery)
+   - Subcategories: Onboarding Efficiency, Smooth Transitions, Delivery Effectiveness
+
+8. **Other Processes** (e.g., Processes not related to the above categories, such as regulatory compliance, system upgrades, or technical services like H2H connectivity)
+   - Subcategories: System Development (Core Banking Systems, Payment Infrastructure), Vault Services (Cash Vault, Safekeeping, Vault Operations), H2H Connectivity (Host-to-Host Connectivity, Direct Banking Integration)
+
+9. **Other**: If the text does not match any of the above categories, classify it as "Other" with a relevant sub-category if possible.
+
+For each text, provide a high-level category, a relevant sub-category with specifics, and a 2-3 word process description based on the context.
+
+Text: "{input_text}"
+
+### Response Format:
+1. Main Category: [Product Capability / Client-Specific Solutions / Market Disruption / Relationship and Wallet Share / Geographical Expansion / Competitor Comparison / Client Onboarding and Implementation / Other Processes / Other]
+2. Sub-Category: [Assigned Sub-Category with details (if applicable) or "Other"]
+3. Specific Process: [2-3 word description]
+"""
+
+# Example input text
+sample_input_text = """Client is interested in a Saudi account with JPM but is not ready yet. 
+They are looking for a solution that allows them to send and receive payments in Saudi Riyal. 
+They want to know if JPM can offer this service and if it's cost-effective."""
+
+# Create a prompt with the single input
+prompt = prompt_template.format(input_text=sample_input_text)
+
+# Generate response using tokenizer and model
+input_tokens = tokenizer(prompt, return_tensors="pt", truncation=True, padding=True, max_length=512).to(model.device)
+output = model.generate(
+    input_tokens['input_ids'], 
+    max_new_tokens=200, 
+    pad_token_id=tokenizer.eos_token_id, 
+    temperature=0.7  # Adjusting the temperature for creativity
+)
+
+# Decode and log the generated text
+generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+print(f"Generated text:\n{generated_text}\n")
+
+# Function to extract classification
+def extract_classification(text):
+    # Initialize default values
+    high_level_category = "Not available"
+    sub_category = "Not available"
+    specific_process = "Not available"
+
+    # Log full generated text for debugging
+    print(f"Generated text:\n{text}\n")
+
+    # Normalize text to handle extra spaces or inconsistencies
+    text = text.replace("**", "").strip()  # Remove any Markdown formatting (**bold**)
+
+    # Split the generated text by newlines
+    lines = text.split("\n")
+    
+    # Iterate over each line to extract the relevant fields
+    for line in lines:
+        line = line.strip()  # Remove leading/trailing whitespace
+        
+        # Handle potential cases where the text might not follow the exact format
+        if "Main Category:" in line:
+            high_level_category = line.split("Main Category:")[1].strip() if "Main Category:" in line else high_level_category
+        elif "Sub-Category:" in line:
+            sub_category = line.split("Sub-Category:")[1].strip() if "Sub-Category:" in line else sub_category
+        elif "Specific Process:" in line:
+            specific_process = line.split("Specific Process:")[1].strip() if "Specific Process:" in line else specific_process
+    
+    # Log the extracted categories for debugging
+    print(f"Extracted Category: {high_level_category}, Sub-Category: {sub_category}, Specific Process: {specific_process}")
+    
+    return high_level_category, sub_category, specific_process
+
+# Extract classifications from the generated text
+category, sub_category, process = extract_classification(generated_text)
+
+# Print the final classification result
+print(f"Category: {category}, Sub-Category: {sub_category}, Specific Process: {process}")
