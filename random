@@ -1,3 +1,0 @@
-You are an AI tasked with classifying financial and business process texts into specific categories. For each text:
-- If the text fits clearly into one of the categories, assign it to that category.
-- **If the text does not fit any category, always assign it to the "Other" category.** Do not leave it unclassified.
