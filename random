@@ -1,0 +1,31 @@
+def extract_classification(text):
+    # Initialize default values
+    high_level_category = "Not available"
+    sub_category = "Not available"
+    specific_process = "Not available"
+
+    # Log full generated text for debugging
+    print(f"Generated text:\n{text}\n")
+
+    # Normalize text to handle extra spaces or inconsistencies
+    text = text.replace("**", "").strip()  # Remove any Markdown formatting (**bold**)
+
+    # Split the generated text by newlines
+    lines = text.split("\n")
+    
+    # Iterate over each line to extract the relevant fields
+    for line in lines:
+        line = line.strip()  # Remove leading/trailing whitespace
+        
+        # Handle potential cases where the text might not follow the exact format
+        if "Category:" in line and "Main" not in line:
+            high_level_category = line.split("Category:")[1].strip()
+        elif "Sub-category:" in line:
+            sub_category = line.split("Sub-category:")[1].strip()
+        elif "Description:" in line:
+            specific_process = line.split("Description:")[1].strip()
+    
+    # Log the extracted categories for debugging
+    print(f"Extracted Category: {high_level_category}, Sub-Category: {sub_category}, Specific Process: {specific_process}")
+    
+    return high_level_category, sub_category, specific_process
