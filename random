@@ -1,0 +1,199 @@
+# Load Data
+df = pd.read_csv('/mnt/data/closed_won_final.csv')  # Adjust the path to your data
+df = df.head(1000)  # Limiting to 1000 rows for demonstration
+total_rows = len(df)
+
+# Function to chunk text based on token length
+def chunk_text(text, max_length=128):
+    tokens = tokenizer.encode(text, truncation=False)
+    # Split tokens into chunks of size max_length
+    return [tokens[i:i+max_length] for i in range(0, len(tokens), max_length)]
+
+# Updated classify_texts function with debugging
+def classify_texts(df_batch):
+    assigned_categories = []
+    sub_categories = []
+    specific_processes = []
+    account_opening_flags = []
+
+    # Updated prompt with detailed category descriptions
+    prompt_template = """
+    You are an AI tasked with classifying financial and business process texts. For each text, understand the context and classify it into one of the following main categories, or select "Other" if none of the categories fit. Only use "Not available" if the text is unclear or has insufficient details.
+
+    **Main Categories:**
+    1. **Product Capability**: Strong product offerings such as ACH Direct Send, BAI reporting, treasury services, financial services
+       - Subcategories: ACH Direct Send, BAI Reporting, Treasury Services, Cash Management Solutions, Reporting Enhancements, Other Product Capability, Financial Services (e.g., Transaction Processing, Treasury Solutions, SWIFT Connectivity)
+           - Transaction Processing (e.g., SWIFT, ACH)
+           - Treasury Solutions
+           - Funding Transfer
+
+    2. **Client-Specific Solutions**: Tailored solutions like account setup, currency accounts, client services, or account modifications
+       - Subcategories: New Account Opening, Account Setup, Currency Accounts, Customized Solutions, Account Transfer, Client Onboarding, Client Support, Client Mandate, Client Deposit, Client Request, Client Interest
+
+    3. **Market Disruption**: Instances where clients switch from competitors due to market shifts (e.g., clients switching from Wells Fargo)
+       - Subcategories: Competitor Switch (e.g., switching from Wells Fargo), Market Disruption, Stability Offering
+
+    4. **Relationship and Wallet Share**: Expanding client relationships or wallet share through new services
+       - Subcategories: Relationship Expansion, Additional Services, Increased Wallet Share
+
+    5. **Geographical Expansion**: Opening accounts in new regions or international entities
+       - Subcategories: New Region Account, International Expansion, Global Growth
+
+    6. **Competitor Comparison**: Comparing services against competitors, highlighting advantages
+       - Subcategories: Pricing Advantages, Service Comparison, Competitor Analysis
+
+    7. **Client Onboarding and Implementation**: Streamlined onboarding or delivery of services
+       - Subcategories: Onboarding Efficiency, Smooth Transitions, Delivery Effectiveness
+
+    8. **Other Processes**: Processes like regulatory compliance, system upgrades, or technical services (e.g., H2H connectivity)
+       - Subcategories: System Development (Core Banking Systems, Payment Infrastructure), Vault Services (Cash Vault Operations), H2H Connectivity (Host-to-Host Integration)
+
+    9. **Other**: If none of the categories fit, assign it to "Other"
+
+    10. **Not available**: Use this only if the text is incomplete or lacks sufficient detail to classify.
+
+    For each text, provide the main category, the sub-category, and a 2-3 word description based on the context.
+
+    Text: "{input_text}"
+
+    ### Response Format:
+    1. Main Category: [Product Capability / Client-Specific Solutions / Market Disruption / Relationship and Wallet Share / Geographical Expansion / Competitor Comparison / Client Onboarding and Implementation / Other Processes / Other / Not available]
+    2. Sub-Category: [Assigned Sub-Category with details or "Other"]
+    3. Specific Process: [2-3 word description]
+    """
+
+    for idx, row in df_batch.iterrows():
+        input_text = row["combined_text"]
+        print(f"Processing row {idx+1}/{len(df_batch)}: {input_text[:100]}...")  # Debug: Show first 100 characters of the text
+
+        # **Chunk the input text**
+        text_chunks = chunk_text(input_text)
+        print(f"Text split into {len(text_chunks)} chunk(s).")  # Debug: Number of chunks
+        
+        # Variables to collect results from chunks
+        combined_category = []
+        combined_sub_category = []
+        combined_process = []
+
+        for chunk_idx, chunk in enumerate(text_chunks):
+            # Convert chunk back to text
+            chunk_text_decoded = tokenizer.decode(chunk)
+            print(f"Processing chunk {chunk_idx+1}/{len(text_chunks)}: {chunk_text_decoded[:100]}...")  # Debug: Show first 100 characters of the chunk
+            
+            # Create prompt for each chunk
+            prompt = prompt_template.format(input_text=chunk_text_decoded)
+
+            # Tokenization and model inference for each chunk
+            input_tokens = tokenizer(prompt, return_tensors="pt", truncation=True, padding=True, max_length=512).to(model.device)
+            output = model.generate(
+                input_tokens['input_ids'], 
+                max_new_tokens=100,  # Limit tokens generated to avoid excessive output
+                pad_token_id=tokenizer.eos_token_id,
+                do_sample=True,  # Enable sampling for diverse responses
+                temperature=0.7  # Adjusting the temperature
+            )
+
+            # Decode and extract results
+            generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+            print(f"Generated text for chunk {chunk_idx+1}: {generated_text[:200]}...")  # Debug: Show first 200 characters of generated text
+
+            # Extract classification results from each chunk
+            category, sub_category, process = extract_classification(generated_text)
+
+            # Collect results from each chunk
+            combined_category.append(category)
+            combined_sub_category.append(sub_category)
+            combined_process.append(process)
+
+        # **Aggregate chunk results**
+        # For simplicity, you can take the most frequent category and process across chunks.
+        final_category = max(set(combined_category), key=combined_category.count)
+        final_sub_category = max(set(combined_sub_category), key=combined_sub_category.count)
+        final_process = " ".join(combined_process)  # Combine processes from chunks
+        print(f"Final category: {final_category}, sub-category: {final_sub_category}, process: {final_process}")  # Debug: Final output for the row
+
+        # Save the classification results for each row
+        assigned_categories.append(final_category)
+        sub_categories.append(final_sub_category)
+        specific_processes.append(final_process)
+
+        # Set flag for account opening
+        if final_category == "Client-Specific Solutions" and "New Account" in final_sub_category:
+            account_opening_flags.append("Yes")
+        else:
+            account_opening_flags.append("No")
+
+    df_batch['assigned_category'] = assigned_categories
+    df_batch['sub_category'] = sub_categories
+    df_batch['specific_process'] = specific_processes
+    df_batch['is_related_to_account_opening'] = account_opening_flags
+
+    return df_batch
+
+
+# Function to extract categories, sub-categories, and specific processes
+def extract_classification(text):
+    # Initialize default values
+    high_level_category = "Not available"
+    sub_category = "Not available"
+    specific_process = "Not available"
+
+    # Log full generated text for debugging
+    print(f"Generated text:\n{text}\n")  # Debug: Show full generated text
+
+    # Normalize text to handle extra spaces or inconsistencies
+    text = text.replace("**", "").strip()  # Remove any Markdown formatting (**bold**)
+
+    # Split the generated text by newlines
+    lines = text.split("\n")
+    
+    # Iterate over each line to extract the relevant fields
+    for line in lines:
+        line = line.strip()  # Remove leading/trailing whitespace
+        
+        # Handle potential cases where the text might not follow the exact format
+        if "Main Category:" in line:
+            high_level_category = line.split("Main Category:")[1].strip() if "Main Category:" in line else high_level_category
+        elif "Sub-Category:" in line:
+            sub_category = line.split("Sub-Category:")[1].strip() if "Sub-Category:" in line else sub_category
+        elif "Specific Process:" in line:
+            specific_process = line.split("Specific Process:")[1].strip() if "Specific Process:" in line else specific_process
+    
+    # Log the extracted categories for debugging
+    print(f"Extracted Category: {high_level_category}, Sub-Category: {sub_category}, Specific Process: {specific_process}")  # Debug: Print extracted categories
+    
+    return high_level_category, sub_category, specific_process
+
+# Process data in batches
+def process_batches(df, batch_size):
+    all_results = pd.DataFrame()
+
+    start_time = time.time()
+
+    for start in tqdm(range(0, total_rows, batch_size), desc="Processing Batches"):
+        end = min(start + batch_size, total_rows)
+
+        df_batch = df.iloc[start:end].copy()
+
+        # Run classification task for the batch
+        df_batch = classify_texts(df_batch)
+
+        # Concatenate results into the full dataframe
+        all_results = pd.concat([all_results, df_batch], ignore_index=True)
+
+    # Measure total time taken
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Time taken to process {len(df)} records: {elapsed_time:.2f} seconds")
+
+    # Save final combined results to a CSV file
+    all_results.to_csv('final_classification_output.csv', index=False)
+    print("Final results saved to final_classification_output.csv.")
+
+# Running the batch process with batch size of 100
+process_batches(df, batch_size=100)
+
+# Display the first few rows of the final output
+df_final = pd.read_csv('final_classification_output.csv')
+print("First few rows of the final saved output:")
+print(df_final.head())
