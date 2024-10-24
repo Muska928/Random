@@ -1,0 +1,53 @@
+def extract_classification(text):
+    # Initialize default values
+    high_level_category = "Not available"
+    sub_category = "Not available"
+    specific_process = "Not available"
+
+    # Log full generated text for debugging
+    print(f"Generated text:\n{text}\n")
+
+    # Split the generated text by newlines
+    lines = text.split("\n")
+    
+    # Iterate over each line to extract the relevant fields
+    for line in lines:
+        line = line.strip()  # Remove leading/trailing whitespace
+        
+        # Handle potential cases where the text might not follow the exact format
+        if "Main Category:" in line:
+            high_level_category = line.split("Main Category:")[1].strip() if "Main Category:" in line else high_level_category
+        elif "Sub-Category:" in line:
+            sub_category = line.split("Sub-Category:")[1].strip() if "Sub-Category:" in line else sub_category
+        elif "Specific Process:" in line:
+            specific_process = line.split("Specific Process:")[1].strip() if "Specific Process:" in line else specific_process
+    
+    # Log the extracted categories for debugging
+    print(f"Extracted Category: {high_level_category}, Sub-Category: {sub_category}, Specific Process: {specific_process}")
+    
+    return high_level_category, sub_category, specific_process
+
+
+# Run classification on a single example for debugging
+sample_input_text = """Client is interested in a Saudi account with JPM but is not ready yet. 
+They are looking for a solution that allows them to send and receive payments in Saudi Riyal. 
+They want to know if JPM can offer this service and if it's cost-effective."""
+
+# Create a prompt with the single input
+prompt = prompt_template.format(input_text=sample_input_text)
+
+# Generate response
+input_tokens = tokenizer(prompt, return_tensors="pt", truncation=True, padding=True, max_length=512).to(model.device)
+output = model.generate(
+    input_tokens['input_ids'], 
+    max_new_tokens=200, 
+    pad_token_id=tokenizer.eos_token_id, 
+    temperature=0.7  # Adjusting the temperature
+)
+
+# Decode and log the generated text
+generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+print(f"Generated text:\n{generated_text}\n")
+
+# Extract classifications from the generated text
+category, sub_category, process = extract_classification(generated_text)
