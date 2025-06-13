@@ -1,0 +1,97 @@
+# Simple POC of Chat With Data: Open Source Version
+# Agents: Analyzer, Retriever, Code Agent, Executor
+
+import faiss
+import pandas as pd
+import sqlite3
+from sentence_transformers import SentenceTransformer
+from jinja2 import Template
+import openai
+import matplotlib.pyplot as plt
+import os
+
+# ------------------------------
+# 1. Embedding Setup
+# ------------------------------
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Sample KB entries: glossary + schema definitions
+glossary = [
+    "Aging IR = aging_days > 30",
+    "Canceled IRs have status = 'canceled'",
+    "CBMO is a line of business",
+]
+
+kb_embeddings = model.encode(glossary)
+index = faiss.IndexFlatL2(384)
+index.add(kb_embeddings)
+
+# ------------------------------
+# 2. Analyzer Agent (Tag query intent)
+# ------------------------------
+def analyze_query(query):
+    tags = {}
+    if "aging" in query:
+        tags["kpi"] = "aging"
+    if "canceled" in query:
+        tags["status"] = "canceled"
+    if "CBMO" in query:
+        tags["lob"] = "CBMO"
+    return tags
+
+# ------------------------------
+# 3. Retriever Agent (Glossary/Snippets)
+# ------------------------------
+def retrieve_context(query):
+    query_vec = model.encode([query])
+    scores, indices = index.search(query_vec, k=2)
+    return [glossary[i] for i in indices[0]]
+
+# ------------------------------
+# 4. Code Agent (Prompt + LLM)
+# ------------------------------
+TEMPLATE = Template("""
+-- Given KPI = {{ kpi }}, Status = {{ status }}, LOB = {{ lob }}
+SELECT submit_date, COUNT(*)
+FROM ir_data
+WHERE ir_status = '{{ status }}'
+  AND lob_name = '{{ lob }}'
+  AND aging_days > 30
+GROUP BY submit_date;
+""")
+
+def generate_sql(tags):
+    return TEMPLATE.render(**tags)
+
+# ------------------------------
+# 5. Executor Agent (Run SQL)
+# ------------------------------
+def execute_sql(sql):
+    conn = sqlite3.connect("ir_data.db")
+    df = pd.read_sql_query(sql, conn)
+    return df
+
+# ------------------------------
+# 6. Output Formatter
+# ------------------------------
+def render_chart(df):
+    df.plot(x="submit_date", y="COUNT(*)", kind="line")
+    plt.title("Aging Canceled IRs - CBMO")
+    plt.ylabel("IR Count")
+    plt.tight_layout()
+    os.makedirs("charts", exist_ok=True)
+    plt.savefig("charts/aging_trend.png")
+    print("Chart saved to charts/aging_trend.png")
+
+# ------------------------------
+# 7. Main Pipeline
+# ------------------------------
+if __name__ == "__main__":
+    user_query = "Show me aging IRs canceled by CBMO in past 3 months"
+    tags = analyze_query(user_query)
+    context = retrieve_context(user_query)
+    sql = generate_sql(tags)
+    print("Generated SQL:\n", sql)
+    df = execute_sql(sql)
+    print(df)
+    render_chart(df)
