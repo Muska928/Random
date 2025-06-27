@@ -1,7 +1,12 @@
-# Convert as_of_date to datetime if it's in YYYYMMDD integer format
-df["as_of_date"] = pd.to_datetime(df["as_of_date"].astype(str), format="%Y%m%d")
-df["max_as_of_date"] = pd.to_datetime(df["max_as_of_date"].astype(str), format="%Y%m%d")
+# Convert as_of_date and max_as_of_date to datetime if needed
+df["as_of_date"] = pd.to_datetime(df["as_of_date"].astype(str), format="%Y%m%d", errors="coerce")
+df["max_as_of_date"] = pd.to_datetime(df["max_as_of_date"].astype(str), format="%Y%m%d", errors="coerce")
 
-print("\nData Time Range:")
-print(f"From {df['as_of_date'].min().date()} to {df['as_of_date'].max().date()}")
+# Check actual unique values
+as_of_min = df["as_of_date"].min()
+as_of_max = df["as_of_date"].max()
 
+if as_of_min == as_of_max:
+    print(f"\nData Time Info: All records have the same date → {as_of_min.date()}")
+else:
+    print(f"\nData Time Range: From {as_of_min.date()} to {as_of_max.date()}")
