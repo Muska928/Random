@@ -1,1 +1,17 @@
+binary_categorical_features = [
+    "browser_access_flag", "jpm_lockbox_image_file_flag", "non_jpm_lockbox_image_file_flag",
+    "self_scanning_lockbox_image_file_flag", "pdf_image_file_to_835_flag", "patient_payment_flag",
+    "paper_eob_conversion_to_835_flag", "835_outbound_transmission_commercial_era_uploading_flag",
+    "epic_cash_management_file_flag", "835_outbound_transmission_commercial_flag",
+    "835_outbound_transmission_patientpay_flag", "outbound_hcl_image_transmission_flag",
+    "reconciliation_manager_flag", "reconciliation_manager_enterprise_flag", "corr_index_flag",
+    "835_packet_split_flag", "fispan_flag"
+]
+
+multi_categorical_features = ["pli_type"]
+
+# Remove duplicates and excluded columns
+exclude_cols = ['grade', 'prod_tx', 'num_active_flags']
+categorical_features = list(set(binary_categorical_features + multi_categorical_features))
+categorical_features = [col for col in categorical_features if col not in exclude_cols]
 
