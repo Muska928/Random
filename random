@@ -1,4 +1,16 @@
-from sklearn.preprocessing import PowerTransformer
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import KBinsDiscretizer
 
-pt = PowerTransformer(method='yeo-johnson')  # Handles both positive and negative values
-df['transformed_target'] = pt.fit_transform(df[[target]])
+# Assume df["predicted_cycle_time"] already exists (from pipeline.predict)
+# Apply bucketing
+binning = KBinsDiscretizer(n_bins=5, encode="ordinal", strategy="quantile")
+df["complexity_score"] = binning.fit_transform(df[["predicted_cycle_time"]]).astype(int) + 1
+
+# Now print time range for each bucket (1 to 5)
+print("📊 Predicted Cycle Time Ranges for Each Complexity Score:\n")
+for score in sorted(df["complexity_score"].unique()):
+    score_times = df[df["complexity_score"] == score]["predicted_cycle_time"]
+    min_time = score_times.min()
+    max_time = score_times.max()
+    print(f"Complexity {score}: {min_time:.2f} to {max_time:.2f} days")
