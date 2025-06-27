@@ -1,16 +1,8 @@
-# 13.1. Plot Top 15 Feature Importances
-top_features = coef_df.head(15)
+print("\n Missing Value Count per Column:")
+missing = df.isnull().sum()
+missing = missing[missing > 0].sort_values(ascending=False)
+print(missing)
 
-plt.figure(figsize=(10, 6))
-ax = sns.barplot(x="Coefficient", y="Feature", data=top_features, palette="viridis")
-
-# Add value labels to bars
-for i, (coef, feature) in enumerate(zip(top_features["Coefficient"], top_features["Feature"])):
-    ax.text(coef + 0.02 if coef >= 0 else coef - 0.02, i, f"{coef:.2f}",
-            va='center', ha='left' if coef >= 0 else 'right', fontsize=9, color='black')
-
-plt.title("Top 15 Feature Importances (Linear Regression)")
-plt.xlabel("Coefficient Value (Impact on Cycle Time)")
-plt.ylabel("Feature")
-plt.tight_layout()
-plt.show()
+print("\nMissing Value Percentage:")
+missing_percent = (df.isnull().sum() / len(df)) * 100
+print(missing_percent[missing_percent > 0].round(2).sort_values(ascending=False))
