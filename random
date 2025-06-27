@@ -1,1 +1,131 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import OneHotEncoder, KBinsDiscretizer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, r2_score
+
+# Load data
+df = pd.read_excel("hcl_spec_level_data (1).xlsx")
+df.dropna(inplace=True)
+
+# Define binary and multi-categorical features
+binary_categorical_features = [
+    "browser_access_flag", "jpm_lockbox_image_file_flag", "non_jpm_lockbox_image_file_flag",
+    "self_scanning_lockbox_image_file_flag", "pdf_image_file_to_835_flag", "patient_payment_flag",
+    "paper_eob_conversion_to_835_flag", "835_outbound_transmission_commercial_era_uploading_flag",
+    "epic_cash_management_file_flag", "835_outbound_transmission_commercial_flag",
+    "835_outbound_transmission_patientpay_flag", "outbound_hcl_image_transmission_flag",
+    "reconciliation_manager_flag", "reconciliation_manager_enterprise_flag", "corr_index_flag",
+    "835_packet_split_flag", "fispan_flag"
+]
+multi_categorical_features = ["pli_type"]
+
+# ➕ Feature Engineering
+df['has_multiple_flags_on'] = df[binary_categorical_features].sum(axis=1)
+df['is_image_file_used'] = df[
+    ["jpm_lockbox_image_file_flag", "non_jpm_lockbox_image_file_flag",
+     "self_scanning_lockbox_image_file_flag", "pdf_image_file_to_835_flag"]
+].max(axis=1)
+
+# Split features into categorical and numeric
+categorical_features = binary_categorical_features + multi_categorical_features
+numeric_features = ['has_multiple_flags_on', 'is_image_file_used']
+
+# Define target and log-transform it for stability
+target = 'pli_active_cycle_time'
+X = df[categorical_features + numeric_features]
+y = df[target]
+y_log = np.log1p(y)
+
+# Preprocessing pipeline
+preprocessor = ColumnTransformer([
+    ("cat", OneHotEncoder(drop='first', handle_unknown='ignore'), categorical_features),
+    ("num", "passthrough", numeric_features)
+])
+
+# Model pipeline with RandomForest
+pipeline = Pipeline([
+    ("preprocessor", preprocessor),
+    ("regressor", RandomForestRegressor(n_estimators=100, max_depth=6, random_state=42))
+])
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X, y_log, test_size=0.2, random_state=42)
+
+# Train
+pipeline.fit(X_train, y_train)
+
+# Predict
+y_pred_log = pipeline.predict(X_test)
+y_pred = np.expm1(y_pred_log)
+
+# Evaluation
+print("\nModel Evaluation:")
+print(f"MAE: {mean_absolute_error(np.expm1(y_test), y_pred):.2f}")
+print(f"R² Score: {r2_score(np.expm1(y_test), y_pred):.2f}")
+
+# Predict full dataset
+df["predicted_cycle_time"] = np.expm1(pipeline.predict(X))
+
+# Bin complexity using quantiles
+binning = KBinsDiscretizer(n_bins=3, encode='ordinal', strategy='quantile')
+df["complexity_score"] = binning.fit_transform(df[["predicted_cycle_time"]]).astype(int) + 1
+
+# 📊 Actual vs Predicted Plot
+plt.figure(figsize=(8, 5))
+sns.scatterplot(x=np.expm1(y_test), y=y_pred)
+plt.plot([y.min(), y.max()], [y.min(), y.max()], 'r--')
+plt.xlabel("Actual Cycle Time")
+plt.ylabel("Predicted Cycle Time")
+plt.title("Actual vs Predicted Cycle Time")
+plt.grid(True)
+
+# Annotate a few points
+for i in range(min(10, len(y_test))):
+    plt.text(x=np.expm1(y_test).iloc[i], y=y_pred[i], s=str(round(y_pred[i])), fontsize=8)
+
+plt.tight_layout()
+plt.show()
+
+# 📊 Complexity Score Distribution with Labels
+plt.figure(figsize=(6, 4))
+ax = sns.countplot(x="complexity_score", data=df)
+for p in ax.patches:
+    ax.annotate(f'{p.get_height()}', (p.get_x() + p.get_width() / 2., p.get_height()),
+                ha='center', va='bottom', fontsize=10)
+plt.title("Complexity Score Distribution")
+plt.xlabel("Complexity (1 = Low, 3 = High)")
+plt.tight_layout()
+plt.show()
+
+# 📌 Feature Importance
+model = pipeline.named_steps['regressor']
+feature_names = pipeline.named_steps['preprocessor'].get_feature_names_out()
+importances = model.feature_importances_
+
+feat_df = pd.DataFrame({"Feature": feature_names, "Importance": importances})
+feat_df = feat_df.sort_values(by="Importance", ascending=False)
+
+print("\nTop Feature Importances:")
+print(feat_df.head(10))
+
+# 📊 Feature Importance Chart
+top_n = 15
+plt.figure(figsize=(10, 6))
+sns.barplot(x="Importance", y="Feature", data=feat_df.head(top_n), palette="viridis")
+plt.title(f"Top {top_n} Feature Importances (Random Forest)")
+plt.xlabel("Importance Score")
+plt.tight_layout()
+plt.grid(True, axis='x')
+plt.show()
+
+# Save results
+df.to_excel("hcl_complexity_output_rf.xlsx", index=False)
+feat_df.to_excel("hcl_feature_importance_rf.xlsx", index=False)
 
