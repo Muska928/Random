@@ -1,1 +1,10 @@
+# 13.1. Plot Top 15 Feature Importances
+top_features = coef_df.head(15)
+plt.figure(figsize=(10, 6))
+sns.barplot(x="Coefficient", y="Feature", data=top_features, palette="viridis")
+plt.title("Top 15 Feature Importances (Linear Regression)")
+plt.xlabel("Coefficient Value (Impact on Cycle Time)")
+plt.ylabel("Feature")
+plt.tight_layout()
+plt.show()
 
