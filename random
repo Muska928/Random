@@ -1,12 +1,24 @@
-#  Normalize binary columns to 0 (False/No) and 1 (True/Yes)
-for col in binary_columns:
-    df[col] = df[col].replace({"Yes": 1, "No": 0, True: 1, False: 0})
-    df[col] = df[col].fillna(0).astype(int)
+# Set the threshold for dropping low-variance flags
+low_threshold = 0.03  # Drop if True < 3%
+high_threshold = 0.97  # Drop if True > 97%
 
-# 2️⃣ Show imbalance in percentage
-print("🔍 Binary Flag Distributions (% True vs % False):\n")
+keep_flags = []
+drop_flags = []
+
+print("\n🔍 Binary Flag Distribution Check:")
 for col in binary_columns:
-    counts = df[col].value_counts(normalize=True) * 100
-    true_pct = counts.get(1, 0)
-    false_pct = counts.get(0, 0)
-    print(f"{col:<55} → ✅ True: {true_pct:.2f}% | ❌ False: {false_pct:.2f}%")
+    true_pct = df[col].mean()
+    false_pct = 1 - true_pct
+    print(f"{col:<50} ➜ True: {true_pct*100:.2f}% | False: {false_pct*100:.2f}%")
+    
+    if true_pct < low_threshold or true_pct > high_threshold:
+        drop_flags.append(col)
+    else:
+        keep_flags.append(col)
+
+# Summary
+print("\n Drop These Flags (Low Info):")
+print(drop_flags)
+
+print("\n Keep These Flags (Good Variation):")
+print(keep_flags)
