@@ -10,56 +10,55 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.inspection import permutation_importance
 
-# 1. Load Excel file
-df = pd.read_excel("your_excel_file.xlsx")  # Replace with actual file path
+# 1. Load data
+df = pd.read_excel("your_excel_file.xlsx")  # 🔁 Replace with actual file
 
-# 2. Convert TRUE/FALSE to 1/0
+# 2. Standardize TRUE/FALSE flags
 df = df.replace({"TRUE": 1, "FALSE": 0, True: 1, False: 0})
 
-# 3. Clean and convert date columns
+# 3. Convert date columns
 df["as_of_date"] = pd.to_datetime(df["as_of_date"].astype(str), format="%Y%m%d", errors="coerce")
 df["max_as_of_date"] = pd.to_datetime(df["max_as_of_date"].astype(str), format="%Y%m%d", errors="coerce")
 
 # 4. EDA Summary
-print(f"\n📌 Shape: {df.shape}")
+print(f"\n📊 Shape: {df.shape}")
 print("\n🧼 Missing Values:")
 missing = df.isnull().sum()
-missing = missing[missing > 0]
-print(missing if not missing.empty else "None")
+print(missing[missing > 0] if missing.any() else "None")
 
 # 5. Drop nulls
 df = df.dropna()
+print(f"\n✅ Remaining rows after dropna: {df.shape[0]}")
 
-# 6. Define columns
+# 6. Identify feature types
 target = "pli_active_cycle_time"
 excluded_cols = [target, 'as_of_date', 'max_as_of_date']
 
 binary_features = [col for col in df.columns if df[col].nunique() == 2 and col not in excluded_cols]
-categorical_features = [col for col in df.columns if (df[col].dtype == 'object' or df[col].nunique() < 15) and col not in binary_features + excluded_cols]
+categorical_features = [col for col in df.columns if df[col].dtype == 'object' or (df[col].nunique() < 15 and col not in binary_features + excluded_cols)]
 numeric_features = [col for col in df.columns if df[col].dtype in [int, float] and col not in binary_features + excluded_cols]
 
-# 7. EDA Visuals
+# 7. Feature Engineering
+df["num_active_flags"] = df[binary_features].sum(axis=1)
+
+# 8. Plots
 for col in binary_features:
-    plt.figure(figsize=(4, 3))
     sns.countplot(x=col, data=df)
-    plt.title(f"Distribution: {col}")
+    plt.title(f"{col} Distribution")
     plt.tight_layout()
     plt.show()
 
 if "pli_type" in df.columns:
-    plt.figure(figsize=(6, 3))
     sns.countplot(y="pli_type", data=df, order=df["pli_type"].value_counts().index)
     plt.title("Top pli_type categories")
     plt.tight_layout()
     plt.show()
 
-plt.figure(figsize=(6, 4))
 sns.histplot(df[target], bins=30, kde=True)
-plt.title("Target Distribution: pli_active_cycle_time")
+plt.title("Target Distribution")
 plt.tight_layout()
 plt.show()
 
-# 8. Heatmap
 corr = df[numeric_features + [target]].corr()
 plt.figure(figsize=(10, 6))
 sns.heatmap(corr, annot=True, cmap="coolwarm")
@@ -67,15 +66,12 @@ plt.title("Correlation Heatmap")
 plt.tight_layout()
 plt.show()
 
-# 9. Feature engineering
-df["num_active_flags"] = df[binary_features].sum(axis=1)
-
-# 10. Final features
+# 9. Modeling Features
 model_features = binary_features + categorical_features + ["num_active_flags"]
 X = df[model_features]
 y = df[target]
 
-# 11. Model pipeline
+# 10. Model pipeline
 preprocessor = ColumnTransformer([
     ("cat", OneHotEncoder(drop='first', handle_unknown='ignore'), model_features)
 ])
@@ -84,66 +80,61 @@ pipeline = Pipeline([
     ("regressor", LinearRegression())
 ])
 
-# 12. Train-test split
+# 11. Train/test split with safeguard
 if df.shape[0] < 10:
     raise ValueError("🚫 Not enough data to split.")
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# 13. Train
+# 12. Fit model
 pipeline.fit(X_train, y_train)
-
-# 14. Evaluate
 y_pred = pipeline.predict(X_test)
+
+# 13. Evaluation
 print(f"\n✅ MAE: {mean_absolute_error(y_test, y_pred):.2f}")
-print(f"✅ R²: {r2_score(y_test, y_pred):.2f}")
+print(f"✅ R² Score: {r2_score(y_test, y_pred):.2f}")
 
-# 15. Predict Full
+# 14. Predict Full + Bin into Complexity
 df["predicted_cycle_time"] = pipeline.predict(X)
-
-# 16. Binning
 binning = KBinsDiscretizer(n_bins=5, encode='ordinal', strategy='quantile')
 df["complexity_score"] = binning.fit_transform(df[["predicted_cycle_time"]]).astype(int) + 1
 
-# 17. Plot: Actual vs Predicted
-plt.figure(figsize=(8, 5))
+# 15. Plot Predictions
 sns.scatterplot(x=y_test, y=y_pred)
 plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
-plt.title("Actual vs Predicted")
 plt.xlabel("Actual")
 plt.ylabel("Predicted")
-plt.grid(True)
+plt.title("Actual vs Predicted")
 plt.tight_layout()
 plt.show()
 
-# 18. Plot: Complexity Score
-plt.figure(figsize=(6, 4))
+# 16. Complexity Score Plot
 sns.countplot(x="complexity_score", data=df)
 plt.title("Complexity Score Distribution")
-plt.xlabel("Score (1 = Low, 5 = High)")
+plt.xlabel("1 = Low, 5 = High")
 plt.tight_layout()
 plt.show()
 
-# 19. Feature Importance (SHAP or Permutation)
+# 17. Feature Importance (SHAP or fallback)
 try:
-    explainer = shap.Explainer(pipeline.named_steps["regressor"], feature_names=preprocessor.named_transformers_["cat"].get_feature_names_out(model_features))
-    shap_values = explainer(pipeline.named_steps["preprocessor"].transform(X_train))
-
-    shap.summary_plot(shap_values, features=pipeline.named_steps["preprocessor"].transform(X_train), feature_names=explainer.feature_names, plot_type="bar")
+    # Requires dense input and raw regressor
+    X_encoded = pipeline.named_steps["preprocessor"].transform(X_train).toarray()
+    explainer = shap.Explainer(pipeline.named_steps["regressor"], X_encoded)
+    shap_values = explainer(X_encoded)
+    shap.summary_plot(shap_values, X_encoded, feature_names=explainer.feature_names, plot_type="bar")
 except Exception as e:
-    print("\n⚠️ SHAP failed, using permutation importance instead.")
-    result = permutation_importance(pipeline, X_test, y_test, n_repeats=10, random_state=42)
-    sorted_idx = result.importances_mean.argsort()[::-1][:15]
+    print("⚠️ SHAP fallback to permutation due to:", e)
+    perm = permutation_importance(pipeline, X_test, y_test, n_repeats=10, random_state=42)
+    enc_features = pipeline.named_steps["preprocessor"].named_transformers_["cat"].get_feature_names_out(model_features)
+    sorted_idx = perm.importances_mean.argsort()[::-1][:15]
     perm_df = pd.DataFrame({
-        "Feature": preprocessor.named_transformers_["cat"].get_feature_names_out(model_features)[sorted_idx],
-        "Importance": result.importances_mean[sorted_idx]
+        "Feature": enc_features[sorted_idx],
+        "Importance": perm.importances_mean[sorted_idx]
     })
-    plt.figure(figsize=(10, 6))
-    sns.barplot(data=perm_df, x="Importance", y="Feature", palette="viridis")
+    sns.barplot(x="Importance", y="Feature", data=perm_df, palette="viridis")
     plt.title("Top Feature Importances (Permutation)")
     plt.tight_layout()
-    plt.grid(True, axis="x")
     plt.show()
 
-# 20. Save outputs
+# 18. Save
 df.to_excel("pli_with_complexity_scores.xlsx", index=False)
-print("\n📁 Excel exported: pli_with_complexity_scores.xlsx")
+print("\n📁 Saved: pli_with_complexity_scores.xlsx")
