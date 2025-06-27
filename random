@@ -1,24 +1,25 @@
-# Set the threshold for dropping low-variance flags
-low_threshold = 0.03  # Drop if True < 3%
-high_threshold = 0.97  # Drop if True > 97%
+# Step 1: Compute correlation of binary flags with the target
+correlation_series = df[binary_columns + ["pli_active_cycle_time"]].corr()["pli_active_cycle_time"]
 
-keep_flags = []
-drop_flags = []
+# Step 2: Sort by absolute correlation
+correlation_sorted = correlation_series.sort_values(key=abs)
 
-print("\n🔍 Binary Flag Distribution Check:")
-for col in binary_columns:
-    true_pct = df[col].mean()
-    false_pct = 1 - true_pct
-    print(f"{col:<50} ➜ True: {true_pct*100:.2f}% | False: {false_pct*100:.2f}%")
-    
-    if true_pct < low_threshold or true_pct > high_threshold:
-        drop_flags.append(col)
-    else:
-        keep_flags.append(col)
+# Step 3: Print weak correlations
+print("\n📉 Low-correlation binary flags (|corr| < 0.05):")
+low_corr_flags = correlation_sorted[abs(correlation_sorted) < 0.05]
+print(low_corr_flags)
 
-# Summary
-print("\n Drop These Flags (Low Info):")
-print(drop_flags)
+# Optional: Visualize all correlations (barplot)
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-print("\n Keep These Flags (Good Variation):")
-print(keep_flags)
+plt.figure(figsize=(10, 6))
+sns.barplot(x=correlation_sorted.drop("pli_active_cycle_time").values,
+            y=correlation_sorted.drop("pli_active_cycle_time").index,
+            palette="coolwarm")
+plt.axvline(x=0, color='gray', linestyle='--')
+plt.title("Binary Flag Correlation with PLI Active Cycle Time")
+plt.xlabel("Correlation Coefficient")
+plt.tight_layout()
+plt.grid(True, axis='x')
+plt.show()
