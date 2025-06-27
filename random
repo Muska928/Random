@@ -1,25 +1,4 @@
-# Step 1: Compute correlation of binary flags with the target
-correlation_series = df[binary_columns + ["pli_active_cycle_time"]].corr()["pli_active_cycle_time"]
+from sklearn.preprocessing import PowerTransformer
 
-# Step 2: Sort by absolute correlation
-correlation_sorted = correlation_series.sort_values(key=abs)
-
-# Step 3: Print weak correlations
-print("\n📉 Low-correlation binary flags (|corr| < 0.05):")
-low_corr_flags = correlation_sorted[abs(correlation_sorted) < 0.05]
-print(low_corr_flags)
-
-# Optional: Visualize all correlations (barplot)
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-plt.figure(figsize=(10, 6))
-sns.barplot(x=correlation_sorted.drop("pli_active_cycle_time").values,
-            y=correlation_sorted.drop("pli_active_cycle_time").index,
-            palette="coolwarm")
-plt.axvline(x=0, color='gray', linestyle='--')
-plt.title("Binary Flag Correlation with PLI Active Cycle Time")
-plt.xlabel("Correlation Coefficient")
-plt.tight_layout()
-plt.grid(True, axis='x')
-plt.show()
+pt = PowerTransformer(method='yeo-johnson')  # Handles both positive and negative values
+df['transformed_target'] = pt.fit_transform(df[[target]])
