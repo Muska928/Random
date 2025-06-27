@@ -1,1 +1,7 @@
+# Convert as_of_date to datetime if it's in YYYYMMDD integer format
+df["as_of_date"] = pd.to_datetime(df["as_of_date"].astype(str), format="%Y%m%d")
+df["max_as_of_date"] = pd.to_datetime(df["max_as_of_date"].astype(str), format="%Y%m%d")
+
+print("\nData Time Range:")
+print(f"From {df['as_of_date'].min().date()} to {df['as_of_date'].max().date()}")
 
