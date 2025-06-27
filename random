@@ -1,1 +1,112 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, KBinsDiscretizer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+
+
+
+# Convert Yes/No to binary
+yes_no_cols = [
+    "browser_access_flag", "jpm_lockbox_image_file_flag", "non_jpm_lockbox_image_file_flag",
+    "self_scanning_lockbox_image_file_flag", "pdf_image_file_to_835_flag", "patient_payment_flag",
+    "paper_eob_conversion_to_835_flag", "835_outbound_transmission_commercial_era_uploading_flag",
+    "epic_cash_management_file_flag", "835_outbound_transmission_commercial_flag",
+    "835_outbound_transmission_patientpay_flag", "outbound_hcl_image_transmission_flag",
+    "reconciliation_manager_flag", "reconciliation_manager_enterprise_flag", "corr_index_flag",
+    "835_packet_split_flag", "fispan_flag"
+]
+for col in yes_no_cols:
+    df[col] = df[col].map({"Yes": 1, "No": 0, True: 1, False: 0}).fillna(0)
+
+# Drop rows with missing target
+df = df.dropna(subset=["pli_active_cycle_time"])
+
+# Features & Target
+features = yes_no_cols + ["pli_type", "prod_tx", "grade"]
+target = "pli_active_cycle_time"
+X = df[features]
+y = df[target]
+
+categorical_features = ["pli_type", "prod_tx", "grade"]
+numeric_features = list(set(features) - set(categorical_features))
+
+# Preprocessing and Model Pipeline
+preprocessor = ColumnTransformer([
+    ("num", MinMaxScaler(), numeric_features),
+    ("cat", OneHotEncoder(drop="first"), categorical_features)
+])
+pipeline = Pipeline([
+    ("preprocessor", preprocessor),
+    ("regressor", LinearRegression())
+])
+
+# Train/Test Split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+pipeline.fit(X_train, y_train)
+
+# Prediction and Complexity
+df["predicted_cycle_time"] = pipeline.predict(X)
+binning = KBinsDiscretizer(n_bins=5, encode="ordinal", strategy="quantile")
+df["complexity_score"] = binning.fit_transform(df[["predicted_cycle_time"]]).astype(int) + 1
+
+# -----------------------------
+# 📊 SAVE CHARTS TO FILE
+# -----------------------------
+
+# 1. Actual vs Predicted
+plt.figure(figsize=(8, 5))
+sns.scatterplot(x="pli_active_cycle_time", y="predicted_cycle_time", data=df)
+plt.plot([df["pli_active_cycle_time"].min(), df["pli_active_cycle_time"].max()],
+         [df["pli_active_cycle_time"].min(), df["pli_active_cycle_time"].max()],
+         color="red", linestyle="--")
+plt.title("Actual vs Predicted Cycle Time")
+plt.xlabel("Actual")
+plt.ylabel("Predicted")
+plt.grid(True)
+plt.tight_layout()
+plt.savefig("actual_vs_predicted.png")
+plt.show()
+
+# 2. Complexity Score Distribution
+plt.figure(figsize=(6, 4))
+sns.countplot(x="complexity_score", data=df)
+plt.title("Distribution of Complexity Scores")
+plt.xlabel("Complexity Score (1=Low, 5=High)")
+plt.ylabel("Count")
+plt.tight_layout()
+plt.savefig("complexity_score_distribution.png")
+plt.show()
+
+# 3. Correlation Heatmap
+plt.figure(figsize=(6, 4))
+sns.heatmap(df[["pli_active_cycle_time", "predicted_cycle_time", "complexity_score"]].corr(), annot=True, cmap="coolwarm")
+plt.title("Correlation Matrix")
+plt.tight_layout()
+plt.savefig("correlation_matrix.png")
+plt.show()
+
+# 4. Distribution of Target
+plt.figure(figsize=(6, 4))
+sns.histplot(df["pli_active_cycle_time"], bins=20, kde=True)
+plt.title("Cycle Time Distribution")
+plt.xlabel("PLI Active Cycle Time")
+plt.tight_layout()
+plt.savefig("cycle_time_distribution.png")
+plt.show()
+
+# 5. Boxplot
+plt.figure(figsize=(6, 4))
+sns.boxplot(x="pli_active_cycle_time", data=df)
+plt.title("Boxplot: Cycle Time")
+plt.tight_layout()
+plt.savefig("cycle_time_boxplot.png")
+plt.show()
+
+# Save the final dataset
+df.to_excel("pli_with_predictions_and_complexity.xlsx", index=False)
+print("✅ All charts saved. Final file exported.")
 
