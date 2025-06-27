@@ -1,1 +1,120 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.preprocessing import KBinsDiscretizer
+from scipy.stats import skew
+
+# 1. Load Excel file
+df = pd.read_excel("your_excel_file.xlsx")  # Replace with actual filename
+df.columns = df.columns.str.strip()
+
+# 2. Drop missing values
+df = df.dropna()
+
+# 3. Feature Columns
+binary_flags = [
+    "browser_access_flag", "jpm_lockbox_image_file_flag", "non_jpm_lockbox_image_file_flag",
+    "self_scanning_lockbox_image_file_flag", "pdf_image_file_to_835_flag", "patient_payment_flag",
+    "paper_eob_conversion_to_835_flag", "835_outbound_transmission_commercial_era_uploading_flag",
+    "epic_cash_management_file_flag", "835_outbound_transmission_commercial_flag",
+    "835_outbound_transmission_patientpay_flag", "outbound_hcl_image_transmission_flag",
+    "reconciliation_manager_flag", "reconciliation_manager_enterprise_flag", "corr_index_flag",
+    "835_packet_split_flag", "fispan_flag"
+]
+multi_category = ["pli_type"]
+categorical_features = binary_flags + multi_category
+target = "pli_active_cycle_time"
+
+# 4. Calculate new features
+df["has_multiple_flags_on"] = df[binary_flags].sum(axis=1)
+df["is_image_file_used"] = df[[
+    "jpm_lockbox_image_file_flag", "non_jpm_lockbox_image_file_flag",
+    "self_scanning_lockbox_image_file_flag", "pdf_image_file_to_835_flag"
+]].max(axis=1)
+
+# 5. Handle skewness in target
+skew_value = skew(df[target])
+if skew_value > 1:
+    df[target] = np.log1p(df[target])  # log transform if right skewed
+
+# 6. Model Setup
+X = df[categorical_features + ["has_multiple_flags_on", "is_image_file_used"]]
+y = df[target]
+
+preprocessor = ColumnTransformer([
+    ("cat", OneHotEncoder(drop="first", handle_unknown="ignore"), categorical_features),
+    ("num", StandardScaler(), ["has_multiple_flags_on", "is_image_file_used"])
+])
+
+pipeline = Pipeline([
+    ("preprocess", preprocessor),
+    ("model", LinearRegression())
+])
+
+# 7. Train/Test Split
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42, test_size=0.2)
+
+# 8. Train
+pipeline.fit(X_train, y_train)
+y_pred = pipeline.predict(X_test)
+
+# 9. Evaluation
+mae = mean_absolute_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
+corr = np.corrcoef(y_test, y_pred)[0, 1]
+print(f"MAE: {mae:.2f}, R²: {r2:.2f}, Correlation: {corr:.2f}, Skewness: {skew_value:.2f}")
+
+# 10. Actual vs Predicted with Labels
+plt.figure(figsize=(10, 6))
+plt.scatter(y_test, y_pred)
+for i in range(len(y_test)):
+    plt.annotate(round(y_test.values[i], 1), (y_test.values[i], y_pred[i]), fontsize=6, alpha=0.5)
+plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
+plt.xlabel("Actual Cycle Time")
+plt.ylabel("Predicted Cycle Time")
+plt.title("Actual vs Predicted Cycle Time")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# 11. Complexity Scores Binning
+df["predicted_cycle_time"] = pipeline.predict(X)
+binning = KBinsDiscretizer(n_bins=5, encode="ordinal", strategy="quantile")
+df["complexity_score"] = binning.fit_transform(df[["predicted_cycle_time"]]).astype(int) + 1
+
+# 12. Complexity Score Chart with Count Labels
+plt.figure(figsize=(6, 4))
+ax = sns.countplot(x="complexity_score", data=df, palette="Blues")
+plt.title("Complexity Score Distribution")
+plt.xlabel("Complexity (1 = Low, 5 = High)")
+for p in ax.patches:
+    height = p.get_height()
+    ax.text(p.get_x() + p.get_width() / 2., height + 5, int(height), ha="center")
+plt.tight_layout()
+plt.show()
+
+# 13. Feature Coefficients
+regressor = pipeline.named_steps["model"]
+encoder = pipeline.named_steps["preprocess"].named_transformers_["cat"]
+num_feats = ["has_multiple_flags_on", "is_image_file_used"]
+feature_names = list(encoder.get_feature_names_out(categorical_features)) + num_feats
+
+coef_df = pd.DataFrame({
+    "Feature": feature_names,
+    "Coefficient": regressor.coef_
+}).sort_values(by="Coefficient", key=abs, ascending=False)
+
+print("\nTop Features:")
+print(coef_df.head(10))
+
+# 14. Save Outputs
+df.to_excel("pli_with_complexity_scores.xlsx", index=False)
+coef_df.to_excel("feature_importance_linear_model.xlsx", index=False)
 
