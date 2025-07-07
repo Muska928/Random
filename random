@@ -1,16 +1,49 @@
+print("\nCycle Time Ranges and Count for Each Complexity Score (based on predicted cycle time in days):")
+for score in range(1, 6):
+    score_df = df[df["complexity_score"] == score]
+    min_cycle_time = score_df["predicted_cycle_time"].min()
+    max_cycle_time = score_df["predicted_cycle_time"].max()
+    count_pli = score_df.shape[0]
+    print(f"Complexity {score}: {min_cycle_time:.2f} - {max_cycle_time:.2f} days, Count: {count_pli}")
+
+
+
+-------
 import pandas as pd
 import numpy as np
+
+# Simulated sample data based on screenshots and description
+np.random.seed(42)
+n = 536
+df = pd.DataFrame({
+    "predicted_cycle_time": np.random.uniform(1, 300, size=n),
+    "pli_active_cycle_time": np.random.uniform(1, 300, size=n)
+})
+
+# Simulate complexity scores based on predicted_cycle_time using quantile strategy
 from sklearn.preprocessing import KBinsDiscretizer
 
-# Assume df["predicted_cycle_time"] already exists (from pipeline.predict)
-# Apply bucketing
 binning = KBinsDiscretizer(n_bins=5, encode="ordinal", strategy="quantile")
 df["complexity_score"] = binning.fit_transform(df[["predicted_cycle_time"]]).astype(int) + 1
 
-# Now print time range for each bucket (1 to 5)
-print("📊 Predicted Cycle Time Ranges for Each Complexity Score:\n")
+# Create summary table
+summary = []
 for score in sorted(df["complexity_score"].unique()):
-    score_times = df[df["complexity_score"] == score]["predicted_cycle_time"]
-    min_time = score_times.min()
-    max_time = score_times.max()
-    print(f"Complexity {score}: {min_time:.2f} to {max_time:.2f} days")
+    subset = df[df["complexity_score"] == score]
+    predicted_min = subset["predicted_cycle_time"].min()
+    predicted_max = subset["predicted_cycle_time"].max()
+    actual_min = subset["pli_active_cycle_time"].min()
+    actual_max = subset["pli_active_cycle_time"].max()
+    count = len(subset)
+    summary.append({
+        "Complexity Score": score,
+        "Predicted Cycle Time Range (days)": f"{predicted_min:.2f} - {predicted_max:.2f}",
+        "Actual Cycle Time Range (days)": f"{actual_min:.2f} - {actual_max:.2f}",
+        "Count": count
+    })
+
+summary_df = pd.DataFrame(summary)
+
+import ace_tools as tools; tools.display_dataframe_to_user(name="Complexity Score Summary", dataframe=summary_df)
+
+summary_df
