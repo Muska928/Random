@@ -1,1 +1,31 @@
+Objective of the Model
+“The goal is to estimate the effort or cycle time for each PLI — based on historical data — so we can group them into complexity levels for better prioritization and planning.”
+
+2. What Data Does It Use?
+“We use PLI setup-related flags — things like whether paper conversion is required, if image-based files are involved, if reconciliation steps are present, and other similar setup steps.”
+
+“Some of these are native flags from the EDH/Spec files, and we also created a few derived flags that combine related attributes into simpler signals. For example:
+
+‘has_multiple_flags_on’ shows when a PLI triggers multiple complexity drivers.
+
+‘is_image_file_used’ captures if any image-based process is used.
+
+‘is_recon’ indicates presence of reconciliation setup.”
+
+3. How Does the Model Work?
+“It’s a linear model, which means it works like adding pieces of effort together.”
+
+You can explain the logic this way:
+
+"The model gives each PLI a base value, and then adds extra time based on which flags are active."
+
+“Each active flag adds a small, fixed amount of time based on past observed patterns.”
+
+“For example, a PLI with just one or two flags might get a prediction around 50 days, while one with 6 or more active complexity flags might get 100+ days.”
+
+4. Why Did We Group into 4 Levels?
+“To make this easier to interpret, we binned the predictions into four buckets — Low, Medium-Low, Medium-High, and High complexity — based on percentiles from historical data.”
+
+“So now you can quickly see which PLIs are likely to take the most effort and which are relatively simple.”
+
 
