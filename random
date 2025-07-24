@@ -1,25 +1,19 @@
 import pandas as pd
-from IPython.display import display, HTML
 
-file_path = 'your_file.csv' 
 
-# Step 1: Get all columns
-df_header = pd.read_csv(file_path, nrows=0)
-all_columns = df_header.columns.tolist()
-print("📋 Total Columns:", len(all_columns))
+file_path = 'your_file.csv'  # Replace with your file name
+df = pd.read_csv(file_path)
 
-# Optional: print column names
-# for col in all_columns:
-#     print(col)
 
-# Step 2: Load first 50 rows
-df_sample = pd.read_csv(file_path, usecols=all_columns, nrows=50)
+print(f"Original Data Shape: {df.shape[0]} rows × {df.shape[1]} columns")
 
-# Step 3: Show full table (not truncated)
-pd.set_option('display.max_columns', None)      # Show all columns
-pd.set_option('display.max_rows', None)         # Show all rows (limited by df_sample size)
-pd.set_option('display.width', None)            # Disable width wrapping
-pd.set_option('display.colheader_justify', 'left')
 
-# Step 4: Render as HTML table in full
-display(HTML(df_sample.to_html(index=False)))
+df_filtered = df[df['productflag'].astype(str).str.strip().str.lower() == 'access']
+
+
+print(f"Filtered (productflag = 'Access') Shape: {df_filtered.shape[0]} rows × {df_filtered.shape[1]} columns")
+
+
+output_file = "filtered_productflag_access.xlsx"
+df_filtered.to_excel(output_file, index=False)
+print(f"Filtered file saved as: {output_file}")
