@@ -1,14 +1,1 @@
-import pandas as pd
-
-# Replace 'your_file.csv' with your actual file path
-chunk_size = 50000  # process 50,000 rows at a time
-chunks = pd.read_csv('your_file.csv', chunksize=chunk_size)
-
-for i, chunk in enumerate(chunks):
-    print(f"Chunk {i+1}")
-    print(chunk.head(3))  # just peek into top rows of each chunk
-    break  # remove break to iterate fully
-
-cols_to_use = ['column1', 'column2', 'column3']  # replace with relevant columns
-df = pd.read_csv('your_file.csv', usecols=cols_to_use)
 
