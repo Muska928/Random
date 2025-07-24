@@ -1,1 +1,46 @@
+import pandas as pd
+
+# Load data
+file_path = 'your_file.csv'  # Replace with actual file path
+df = pd.read_csv(file_path, low_memory=False)
+
+# Initial stats
+total_rows = len(df)
+flag_access_only = df[df['productflag'].str.lower() == 'access']
+prod_tx_access_only = df[df['prod_tx'].str.lower().str.contains('access', na=False)]
+both_access = df[
+    (df['productflag'].str.lower() == 'access') &
+    (df['prod_tx'].str.lower().str.contains('access', na=False))
+]
+
+# Print summary before filtering
+print("Total rows in dataset:", total_rows)
+print("Rows where productflag is 'Access':", len(flag_access_only))
+print("Rows where prod_tx contains 'access':", len(prod_tx_access_only))
+print("Rows where BOTH conditions are true:", len(both_access))
+
+# Filtered Access records
+df_access = both_access.copy()
+
+# EDA
+print("\n--- EDA on Access Records ---")
+
+# Average pli_num_acct
+print("Average PLI Account Count:", df_access['pli_num_acct'].mean())
+
+# Count of PLI Types
+print("\nPLI Type Distribution:")
+print(df_access['pli_type'].value_counts(dropna=False))
+
+# Grade Distribution
+print("\nGrade Distribution:")
+print(df_access['grade'].value_counts(dropna=False))
+
+# Country Distribution
+print("\nCountry Distribution (Assigned Employee Country):")
+print(df_access['pli_assigned_empl_business_addr_country_cd'].value_counts(dropna=False))
+
+# Team Level Info (BU Level 13)
+print("\nTeam Breakdown (BU Level 13):")
+print(df_access['pli_assigned_empl_bu_level_13_name'].value_counts(dropna=False))
 
