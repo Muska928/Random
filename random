@@ -1,1 +1,50 @@
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+import numpy as np
+
+# Load filtered access product data
+df_access = both_access.copy()
+
+# --- Step 1: Select Features & Target ---
+num_features = [
+    'pli_num_acct', 'flag_pli_on_hold', 'flag_pli_cancel',
+    'position_tenure_years', 'firm_tenure_years',
+    'onhold_time', 'operations_time', 'training_time'
+]
+cat_features = [
+    'grade', 'pli_type',
+    'pli_assigned_empl_bu_level_13_name',
+    'pli_assigned_empl_business_addr_country_cd'
+]
+target = 'pli_cycle_time'
+
+# Filter valid rows
+df_model = df_access[num_features + cat_features + [target]].dropna()
+
+# --- Step 2: Define Preprocessing ---
+preprocessor = ColumnTransformer([
+    ('num', StandardScaler(), num_features),
+    ('cat', OneHotEncoder(handle_unknown='ignore'), cat_features)
+])
+
+# --- Step 3: Build Pipeline ---
+pipeline = Pipeline(steps=[
+    ('preprocess', preprocessor),
+    ('model', LinearRegression())
+])
+
+# --- Step 4: Fit Model ---
+X = df_model[num_features + cat_features]
+y = df_model[target]
+pipeline.fit(X, y)
+
+# --- Step 5: Predict and Assign Complexity Score ---
+df_model['predicted_cycle_time'] = pipeline.predict(X)
+df_model['complexity_bucket'] = pd.qcut(df_model['predicted_cycle_time'], q=4, labels=[1, 2, 3, 4])
+
+# --- Step 6: View Output ---
+print(df_model[['pli_cycle_time', 'predicted_cycle_time', 'complexity_bucket']].head())
 
