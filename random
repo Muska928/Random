@@ -1,19 +1,96 @@
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
+# Settings for cleaner output and plots
+pd.set_option('display.max_columns', None)
+sns.set(style="whitegrid")
+plt.rcParams["figure.figsize"] = (10, 5)
 
-file_path = 'your_file.csv'  # Replace with your file name
+# Step 1: Load the full dataset
+file_path = "your_file.csv"  # Replace with actual file path
 df = pd.read_csv(file_path)
 
-
-print(f"Original Data Shape: {df.shape[0]} rows × {df.shape[1]} columns")
-
-
+# Step 2: Filter where productflag == 'Access'
 df_filtered = df[df['productflag'].astype(str).str.strip().str.lower() == 'access']
+print(f"\nFiltered (productflag = 'Access') Shape: {df_filtered.shape[0]} rows × {df_filtered.shape[1]} columns")
 
+# ==========================
+# DATA QUALITY CHECK BLOCK
+# ==========================
 
-print(f"Filtered (productflag = 'Access') Shape: {df_filtered.shape[0]} rows × {df_filtered.shape[1]} columns")
+print("\n--- DATA QUALITY CHECK ---")
 
+# 1. Missing values
+missing = df_filtered.isnull().sum()
+missing_pct = (missing / len(df_filtered)) * 100
+missing_summary = pd.DataFrame({
+    "Missing Count": missing,
+    "Missing %": missing_pct.round(2)
+})
+missing_summary = missing_summary[missing_summary["Missing Count"] > 0]
+print("\nMissing Value Summary (Top 10):")
+print(missing_summary.sort_values(by="Missing %", ascending=False).head(10))
 
-output_file = "filtered_productflag_access.xlsx"
-df_filtered.to_excel(output_file, index=False)
-print(f"Filtered file saved as: {output_file}")
+# 2. Duplicate rows
+duplicates = df_filtered.duplicated().sum()
+print(f"\nDuplicate Rows: {duplicates}")
+
+# 3. Constant columns
+constant_cols = [col for col in df_filtered.columns if df_filtered[col].nunique() == 1]
+print(f"\nConstant Columns (no variation): {len(constant_cols)}")
+if constant_cols:
+    print(constant_cols)
+
+# 4. Numeric summary
+numeric_cols = df_filtered.select_dtypes(include='number')
+print("\nSummary Stats for Numeric Columns:")
+print(numeric_cols.describe().T)
+
+# 5. Categorical cardinality
+cat_cols = df_filtered.select_dtypes(include='object')
+cat_card = {col: df_filtered[col].nunique() for col in cat_cols.columns}
+cat_card_df = pd.DataFrame.from_dict(cat_card, orient='index', columns=['Unique Values'])
+print("\nTop 10 Categorical Columns by Cardinality:")
+print(cat_card_df.sort_values(by='Unique Values', ascending=False).head(10))
+
+# 6. Type misclassification (numeric stored as object)
+print("\nPossible Numeric Columns Stored as Object:")
+for col in cat_cols.columns:
+    try:
+        pd.to_numeric(df_filtered[col])
+        print(f"  - {col}")
+    except:
+        continue
+
+# 7. Business Rule Validation (e.g., pli_score should be 0–100)
+if 'pli_score' in df_filtered.columns:
+    invalid_scores = df_filtered[(df_filtered['pli_score'] < 0) | (df_filtered['pli_score'] > 100)]
+    print(f"\nPLI Score Out-of-Range: {len(invalid_scores)} rows")
+    if not invalid_scores.empty:
+        print(invalid_scores[['pli_score']].head())
+
+# ==========================
+# VISUALIZATIONS
+# ==========================
+
+# Pie Charts for Categorical Composition (Top 3)
+for col in cat_cols.columns[:3]:
+    value_counts = df_filtered[col].value_counts().head(5)
+    plt.figure(figsize=(6, 6))
+    plt.pie(value_counts, labels=value_counts.index, autopct='%1.1f%%', startangle=140)
+    plt.title(f"Pie Chart of {col} (Top 5 categories)")
+    plt.axis('equal')
+    plt.show()
+
+# Bar Chart - Count by Product Complexity Level
+if 'product_complexity_cb' in df_filtered.columns:
+    plt.figure(figsize=(8, 5))
+    sns.countplot(data=df_filtered, x='product_complexity_cb',
+                  order=df_filtered['product_complexity_cb'].value_counts().index)
+    plt.title("Record Count by Product Complexity")
+    plt.xlabel("Product Complexity Level")
+    plt.ylabel("Count")
+    plt.show()
+else:
+    print("\nColumn 'product_complexity_cb' not found in the dataset.")
