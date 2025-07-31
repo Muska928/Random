@@ -1,1 +1,11 @@
+Currently, the model is not rule-based, but we can incorporate rules as outlined in the comments. There's just one commonly observed pattern—for example, 
+combinations like Image View Only + ACH are being prioritized more highly. Apart from that, there are 2–3 specific comments like the ones below that impact complexity scoring. 
+I believe we’re in a good place. I can confirm these 2–3 changes via email or chat, and once that’s done, we’ll have a finalized set of attributes for HCL.
+
+Examples:
+
+Epic CM, EOBC, IIF
+
+Add PAS file for RME
+
 
