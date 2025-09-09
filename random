@@ -1,1 +1,14 @@
-I truly value the open and trusting environment you’ve created for sharing feedback, and I genuinely appreciate how open you are to hearing my perspective. I’m always comfortable discussing my thoughts directly with you, but I’d prefer not to escalate this to UMA, as I have to interact with Satish daily on the floor and want to ensure our working relationship remains positive and collaborative. If it goes higher, it may be easy for him to guess the source, so I’d be more comfortable keeping this conversation between us and working on it together at our level.
+# Identify likely category/type column and print unique values with counts
+category_col = None
+for col in ['type', 'category', 'prod_type']:
+    if col in df_access.columns:
+        category_col = col
+        break
+
+if category_col:
+    print(f"\nUnique Categories in Access Product (from '{category_col}' column):")
+    category_counts = df_access[category_col].value_counts(dropna=True).reset_index()
+    category_counts.columns = [category_col, 'Count']
+    print(category_counts.to_string(index=False))
+else:
+    print("\nNo obvious category/type column found. Please check column names.")
