@@ -1,14 +1,46 @@
-# Identify likely category/type column and print unique values with counts
-category_col = None
-for col in ['type', 'category', 'prod_type']:
-    if col in df_access.columns:
-        category_col = col
-        break
+# ---------- ACCESS CATEGORIES FROM prod_tx ----------
+print("\nAccess Product Categories Summary (derived from 'prod_tx')")
+print("-" * 70)
 
-if category_col:
-    print(f"\nUnique Categories in Access Product (from '{category_col}' column):")
-    category_counts = df_access[category_col].value_counts(dropna=True).reset_index()
-    category_counts.columns = [category_col, 'Count']
-    print(category_counts.to_string(index=False))
+if 'prod_tx' in df_access.columns:
+    # normalize prod_tx text
+    prod_tx_norm = (
+        df_access['prod_tx']
+        .astype(str)
+        .str.replace(r'\s+', ' ', regex=True)
+        .str.strip()
+    )
+
+    # extract text after the word 'ACCESS' as category label
+    # e.g., "J.P. Morgan ACCESS Next Gen Billing Statements" -> "Next Gen Billing Statements"
+    access_category = (
+        prod_tx_norm
+        .str.extract(r'ACCESS\s*(.*)', expand=False)
+        .str.replace(r'^[\-–—:]+', '', regex=True)  # drop leading punctuation
+        .str.strip()
+    )
+
+    # attach (optional)
+    df_access['access_category'] = access_category
+
+    # counts table (sorted by frequency)
+    access_category_counts = (
+        df_access['access_category']
+        .dropna()
+        .value_counts()
+        .reset_index()
+        .rename(columns={'index': 'Access_Product_Category', 'access_category': 'Count'})
+    )
+
+    # print table
+    if not access_category_counts.empty:
+        print(access_category_counts.to_string(index=False))
+        print(f"\nUnique Access categories found: {access_category_counts.shape[0]}")
+    else:
+        print("No Access categories could be parsed from 'prod_tx'.")
 else:
-    print("\nNo obvious category/type column found. Please check column names.")
+    print("Column 'prod_tx' not found. Please verify the input schema.")
+
+# ---------- (OPTIONAL) UNIQUE COLUMNS IN ACCESS SUBSET ----------
+print("\nColumns available in Access dataset:")
+print(list(df_access.columns))
