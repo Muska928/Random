@@ -1,23 +1,41 @@
-# ---------- CATEGORIES (FULL prod_tx NAMES) ----------
-print("\nAccess Product Categories Summary (using FULL prod_tx names)")
-print("-" * 70)
+import pandas as pd
 
-if 'prod_tx' in df_access.columns:
-    df_access['Access_Flag'] = 'Access'  # add explicit flag
+# Load data
+df = pd.read_excel("your_file.xlsx")   # adjust file name
 
-    # summary counts on full prod_tx
-    prod_tx_counts = (
-        df_access.groupby(['Access_Flag', 'prod_tx'])
-        .size()
-        .reset_index(name='Count')
-        .sort_values(by='Count', ascending=False)
+# ==== 1. Handle missing / invalids ====
+# Replace blanks/NaNs/False/True with a clean category "other"
+cat_cols = ["prod_tx", "transaction_repair_ind", "pli_type", 
+            "assoc_region_accnt", "connectivity_method", "payment_type"]
+
+for c in cat_cols:
+    df[c] = df[c].astype(str).str.strip()   # force to string
+    df[c] = df[c].replace(["nan", "None", "False", "True", ""], "other")
+    df[c] = df[c].fillna("other")           # ensure NaNs handled
+
+# ==== 2. Function to make score dictionary ====
+def make_score_dict(df, col, target="pli_active_cycle_time"):
+    """
+    Returns {category: mean(target)} for given column
+    """
+    scores = (
+        df.groupby(col)[target]
+          .mean()
+          .round(0)  # round to nearest int like your screenshot
+          .sort_values(ascending=False)
+          .to_dict()
     )
+    return scores
 
-    print(prod_tx_counts.to_string(index=False))
-    print(f"\nUnique Access product names found: {prod_tx_counts['prod_tx'].nunique()}")
-else:
-    print("Column 'prod_tx' not found. Please verify schema.")
+# ==== 3. Generate score dictionaries for each categorical ====
+wo_request_type_scores   = make_score_dict(df, "prod_tx")
+transaction_repair_scores = make_score_dict(df, "transaction_repair_ind")
+pli_type_scores          = make_score_dict(df, "pli_type")
+assoc_region_scores      = make_score_dict(df, "assoc_region_accnt")
+connectivity_method_scores = make_score_dict(df, "connectivity_method")
+payment_type_scores      = make_score_dict(df, "payment_type")
 
-# ---------- OPTIONAL: PRINT COLUMNS ----------
-print("\nColumns available in Access dataset:")
-print(list(df_access.columns))
+# ==== 4. Print examples ====
+print("wo_request_type_scores =", wo_request_type_scores)
+print("payment_type_scores =", payment_type_scores)
+print("assoc_region_scores =", assoc_region_scores)
