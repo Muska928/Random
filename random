@@ -1,1 +1,6 @@
-
+# ---- Add Overall R² right here ----
+n_train = len(y_train)
+n_test  = len(y_test)
+overall_r2_weighted = (score_train * n_train + score_test * n_test) / (n_train + n_test)
+print("Overall R^2 Score (size-weighted train/test):", round(overall_r2_weighted, 4))
+# -----------------------------------
