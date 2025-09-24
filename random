@@ -1,1 +1,219 @@
+# =========================
+# Imports
+# =========================
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import KFold, train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+
+# =========================
+# 0) Load your dataset
+# =========================
+FILE_PATH = "elockbox_spec_pli.xlsx"   # <--- update if the file name differs
+SHEET_NAME = None                      # set to "Sheet1" if needed; None uses first sheet
+
+df = pd.read_excel(FILE_PATH, sheet_name=SHEET_NAME)
+
+# Make sure the expected columns exist (based on your screenshots)
+expected_cols = [
+    "prod_tx",
+    "transaction_repair_ind",
+    "pli_type",
+    "assoc_region_accnt",
+    "assoc_sub_region_account",
+    "accnt_ct",
+    "grade",
+    "pli_active_cycle_time",
+]
+missing = [c for c in expected_cols if c not in df.columns]
+if missing:
+    raise ValueError(f"Missing expected column(s): {missing}")
+
+target_col = "pli_active_cycle_time"
+
+# =========================
+# 1) Clean categorical values
+# =========================
+cat_cols = [
+    "prod_tx",
+    "transaction_repair_ind",
+    "pli_type",
+    "assoc_region_accnt",
+    "assoc_sub_region_account",
+]
+
+def clean_cats(df, cat_cols):
+    """Force string, strip, and replace blanks/NA/booleans with 'other'."""
+    bad_vals = [pd.NA, np.nan, "nan", "NaN", "none", "None", "NULL", "null", "",
+                "TRUE", "True", "FALSE", "False"]
+    for c in cat_cols:
+        s = df[c].astype("string").str.strip()
+        s = s.replace(bad_vals, "other")
+        s = s.fillna("other")
+        df[c] = s
+    return df
+
+df = clean_cats(df.copy(), cat_cols)
+
+# =========================
+# 2) Score dictionaries (mean / 10, rounded)
+# =========================
+def make_score_dict(df, col, target=target_col, scale_div=10):
+    """{category: round(mean(target)/scale_div)} sorted descending."""
+    return (
+        df.groupby(col)[target]
+          .mean()
+          .div(scale_div)
+          .round(0)
+          .sort_values(ascending=False)
+          .to_dict()
+    )
+
+scores_prod_tx            = make_score_dict(df, "prod_tx")
+scores_tr_repair          = make_score_dict(df, "transaction_repair_ind")
+scores_pli_type           = make_score_dict(df, "pli_type")
+scores_region             = make_score_dict(df, "assoc_region_accnt")
+scores_sub_region         = make_score_dict(df, "assoc_sub_region_account")
+
+print("wo_request_type_scores =", scores_prod_tx)
+print("transaction_repair_scores =", scores_tr_repair)
+print("pli_type_scores =", scores_pli_type)
+print("assoc_region_scores =", scores_region)
+print("assoc_sub_region_scores =", scores_sub_region)
+
+# =========================
+# 3) Split BEFORE any encoding
+# =========================
+# Choose numeric predictors you want to keep as numeric.
+# From your sheet, 'accnt_ct' and 'grade' are numeric. (Leave others numeric if appropriate.)
+num_cols = ["accnt_ct", "grade"]
+
+X = df[cat_cols + num_cols].copy()
+y = df[target_col].values
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.20, random_state=42
+)
+
+# =========================
+# 4) OOF target encoding (leakage-safe)
+# =========================
+def oof_target_encode(X_tr, y_tr, X_te, cols, n_splits=5, smoothing=20.0, random_state=42):
+    """
+    K-fold out-of-fold target encoding with smoothing -> leakage safe.
+    Encoded columns are named f"{col}_avg".
+    """
+    X_tr_enc = X_tr.copy()
+    X_te_enc = X_te.copy()
+
+    # Create a Series aligned to indices for safe groupby usage
+    y_series = pd.Series(y_tr, index=X_tr.index, name="__y__")
+    global_mean = float(y_series.mean())
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+
+    for col in cols:
+        oof_vals = pd.Series(index=X_tr.index, dtype=float)
+
+        # Build OOF means
+        for tr_idx, val_idx in kf.split(X_tr):
+            tr_fold = X_tr.iloc[tr_idx]
+            y_fold  = y_series.iloc[tr_idx]
+            # mean and count per category on the training fold
+            means  = y_fold.groupby(tr_fold[col]).mean()
+            counts = y_fold.groupby(tr_fold[col]).count()
+            means_smooth = (means * counts + global_mean * smoothing) / (counts + smoothing)
+            # map to validation fold
+            oof_vals.iloc[val_idx] = X_tr.iloc[val_idx][col].map(means_smooth).fillna(global_mean)
+
+        # Final map for the test set using full training
+        means_full  = y_series.groupby(X_tr[col]).mean()
+        counts_full = y_series.groupby(X_tr[col]).count()
+        means_full_smooth = (means_full * counts_full + global_mean * smoothing) / (counts_full + smoothing)
+
+        X_tr_enc[col + "_avg"] = oof_vals.values
+        X_te_enc[col + "_avg"] = X_te[col].map(means_full_smooth).fillna(global_mean).values
+
+    return X_tr_enc.drop(columns=cols), X_te_enc.drop(columns=cols)
+
+Xtr_enc, Xte_enc = oof_target_encode(
+    X_train.copy(), y_train, X_test.copy(),
+    cols=cat_cols, n_splits=5, smoothing=20.0, random_state=42
+)
+
+# Determine final feature lists
+encoded_cat_cols = [c + "_avg" for c in cat_cols]
+numeric_features = [c for c in num_cols if c in Xtr_enc.columns]
+
+# =========================
+# 5) Pipeline: scale numerics + non-negative OLS
+# =========================
+preproc = ColumnTransformer(
+    transformers=[
+        ("num", StandardScaler(with_mean=True, with_std=True), numeric_features),
+        ("cats", "passthrough", encoded_cat_cols),
+    ],
+    remainder="drop"
+)
+
+model = LinearRegression(positive=True)  # non-negative coefficients (intercept may be any sign)
+
+pipe = Pipeline([("prep", preproc), ("reg", model)])
+
+pipe.fit(Xtr_enc, y_train)
+r2_train = pipe.score(Xtr_enc, y_train)
+r2_test  = pipe.score(Xte_enc, y_test)
+print(f"\nTrain R²: {r2_train:.4f} | Test R²: {r2_test:.4f}")
+
+# =========================
+# 6) Coefficients table + weights
+# =========================
+feat_names = pipe.named_steps["prep"].get_feature_names_out()
+coefs = pipe.named_steps["reg"].coef_.astype(float)
+
+coef_df = (
+    pd.DataFrame({"attributes": feat_names, "coefficients": coefs})
+      .sort_values("coefficients", ascending=False)
+      .reset_index(drop=True)
+)
+
+coef_sum = coef_df["coefficients"].sum()
+coef_df["weight_%"] = (coef_df["coefficients"] / coef_sum * 100.0) if coef_sum > 0 else 0.0
+coef_df["weight_%"] = coef_df["weight_%"].round(2)
+
+print("\nCoefficients Table:")
+print("-" * 60)
+print(f"{'No.':<4} {'coefficients':>12}   {'attributes'}")
+print("-" * 60)
+for i, row in coef_df.iterrows():
+    print(f"{i:<4} {row['coefficients']:>12.6f}   {row['attributes']}")
+print("-" * 60)
+
+print("\nCoefficients with Weights (% of total coefficient mass):")
+print("-" * 60)
+print(f"{'No.':<4} {'coef':>10}   {'weight_%':>8}   {'attributes'}")
+print("-" * 60)
+for i, row in coef_df.iterrows():
+    print(f"{i:<4} {row['coefficients']:>10.6f}   {row['weight_%']:>8.2f}   {row['attributes']}")
+print("-" * 60)
+
+# =========================
+# 7) Peek at processed features (train/test)
+# =========================
+Xtr_proc = pd.DataFrame(
+    pipe.named_steps["prep"].transform(Xtr_enc),
+    columns=feat_names, index=Xtr_enc.index
+)
+Xte_proc = pd.DataFrame(
+    pipe.named_steps["prep"].transform(Xte_enc),
+    columns=feat_names, index=Xte_enc.index
+)
+
+print("\nFirst few rows of processed train data:")
+print(Xtr_proc.head())
+
+print("\nFirst few rows of processed test data:")
+print(Xte_proc.head())
 
