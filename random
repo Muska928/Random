@@ -1,1 +1,166 @@
+# =========================
+# eLockbox scoring – complete script
+# =========================
+import numpy as np
+import pandas as pd
+
+# ---------- 0) Load ----------
+FILE_PATH = "elockbox_spec_pli.xlsx"        # update if your file name differs
+SHEET_NAME = None                            # None = first sheet
+df = pd.read_excel(FILE_PATH, sheet_name=SHEET_NAME)
+
+# ---------- 1) Basic hygiene ----------
+# Expected columns (adjust names here if your file uses slightly different headers)
+expected = [
+    "prod_tx",                   # work order / product text
+    "transaction_repair_ind",    # bool/flag-like
+    "pli_type",                  # MAINTENANCE / SETUP EXISTING / SETUP NEW
+    "assoc_region_accnt",        # UNITED STATES / etc
+    "accnt_ct",                  # numeric count, to be binned
+    "grade"                      # optional numeric/label; we keep but don’t use for score
+]
+missing = [c for c in expected if c not in df.columns]
+if missing:
+    raise ValueError(f"Missing expected columns: {missing}")
+
+# Clean string columns (force to string, strip, coerce empties to 'other')
+def clean_col(series: pd.Series) -> pd.Series:
+    s = series.astype("string").str.strip()
+    s = s.replace(
+        [pd.NA, np.nan, "nan", "NaN", "none", "None", "NULL", "null", "", "True", "False", "TRUE", "FALSE"],
+        "other"
+    )
+    return s.fillna("other")
+
+for c in ["prod_tx", "transaction_repair_ind", "pli_type", "assoc_region_accnt"]:
+    df[c] = clean_col(df[c])
+
+# ---------- 2) Build binned bnd_accnt_ct from accnt_ct ----------
+# Bins that match your categories (left-closed, right-open)
+#   [-inf,2) -> '0-1', [2,6) -> '2-5', [6,11) -> '6-10', [11,16) -> '11-15'
+# Any value >=16 (or NaN) we’ll label as 'nan' so it maps to the “nan” score you provided.
+bins   = [-np.inf, 2, 6, 11, 16, np.inf]
+labels = ["0-1", "2-5", "6-10", "11-15", "nan"]
+df["bnd_accnt_ct"] = pd.cut(df["accnt_ct"], bins=bins, labels=labels, right=False).astype("string")
+df["bnd_accnt_ct"] = df["bnd_accnt_ct"].fillna("nan")
+
+# ---------- 3) Filled score dicts for eLockbox (as provided) ----------
+wo_prod_tx_scores = {
+    'ACH Origination - Direct Send': 23.0,
+    'ACH Receiver Services (eLockbox)': 4.0,
+    'Data Capture and Delivery': 23.0,
+    'Healthcare Link Provider': 4.0,
+    'Image Cash Letter': 24.0,
+    'J.P. Morgan ACCESS Next Gen - H2H Direct Transmission': 24.0,
+    'J.P. Morgan ACCESS Next Gen Checks - US': 26.0,
+    'Transmission Maintenance': 8.0,
+    'other': 1.0  # fallback
+}
+
+transaction_repair_scores = {
+    'other': 8.0
+}
+
+pli_type_scores = {
+    'MAINTENANCE': 1.0,
+    'SETUP EXISTING': 19.0,
+    'SETUP NEW': 21.0,
+    'other': 1.0
+}
+
+assoc_region_scores = {
+    'UNITED STATES': 8.0,
+    'other': 1.0
+}
+
+grade_scores = {  # kept for reference / optional reporting
+    '450.0': 2.0,
+    '601.0': 0.0,
+    '602.0': 24.0,
+    '603.0': 17.0,
+    'other': 1.0
+}
+
+bnd_ct_accnts_scores = {
+    '0-1': 7.0,
+    '2-5': 9.0,
+    '6-10': 17.0,
+    '11-15': 29.0,
+    'nan': 1.0
+}
+
+# ---------- 4) Regression-based weights (coefficients ×10) ----------
+COEFFICIENT_WEIGHTS = {
+    "prod_tx": 3.632,                  # prod_tx_avg
+    "pli_type": 8.900,                 # pli_type_avg
+    "assoc_region_accnt": -41.838,     # assoc_region_accnt_avg
+    "bnd_accnt_ct": 1.635,             # bnd_ct_accnts_avg
+    "transaction_repair_ind": -0.681   # transaction_repair_ind_avg
+}
+
+# ---------- 5) Apply per-attribute score columns ----------
+def map_score(col: str, mapping: dict) -> pd.Series:
+    key = df[col].astype("string")
+    return key.map(mapping).fillna(mapping.get("other", 0.0))
+
+df["prod_tx_scores"]               = map_score("prod_tx", wo_prod_tx_scores)
+df["transaction_repair_ind_scores"]= map_score("transaction_repair_ind", transaction_repair_scores)
+df["pli_type_scores"]              = map_score("pli_type", pli_type_scores)
+df["assoc_region_scores"]          = map_score("assoc_region_accnt", assoc_region_scores)
+df["bnd_accnt_ct_scores"]          = map_score("bnd_accnt_ct", bnd_ct_accnts_scores)
+
+# ---------- 6) Weighted score (using regression weights) ----------
+ATTRS = ["prod_tx", "pli_type", "assoc_region_accnt", "bnd_accnt_ct", "transaction_repair_ind"]
+SCORE_COL = {
+    "prod_tx": "prod_tx_scores",
+    "pli_type": "pli_type_scores",
+    "assoc_region_accnt": "assoc_region_scores",
+    "bnd_accnt_ct": "bnd_accnt_ct_scores",
+    "transaction_repair_ind": "transaction_repair_ind_scores"
+}
+
+def weighted_sum(row) -> float:
+    total = 0.0
+    for a in ATTRS:
+        w = COEFFICIENT_WEIGHTS.get(a, 0.0)
+        v = row[SCORE_COL[a]]
+        total += w * float(v)
+    return total
+
+df["score_raw_weighted"] = df.apply(weighted_sum, axis=1)
+
+# Optional: normalize to 0–100 for business-friendly scale
+raw_min, raw_max = df["score_raw_weighted"].min(), df["score_raw_weighted"].max()
+if raw_max > raw_min:
+    df["score_norm_0_100"] = 100 * (df["score_raw_weighted"] - raw_min) / (raw_max - raw_min)
+else:
+    df["score_norm_0_100"] = 50.0  # degenerate case
+
+# ---------- 7) Flag rows that used 'other' anywhere (quality check) ----------
+df["flag_other"] = (
+    (df["prod_tx"].eq("other")) |
+    (df["transaction_repair_ind"].eq("other")) |
+    (df["pli_type"].eq("other")) |
+    (df["assoc_region_accnt"].eq("other")) |
+    (df["bnd_accnt_ct"].eq("nan"))
+).astype(int)
+
+# ---------- 8) Pretty print / sample output ----------
+print("\n--- Score dictionaries (short preview) ---")
+print("wo_prod_tx_scores =", dict(list(wo_prod_tx_scores.items())[:5]), " ...")
+print("pli_type_scores   =", pli_type_scores)
+print("assoc_region_scores =", assoc_region_scores)
+print("bnd_ct_accnts_scores =", bnd_ct_accnts_scores)
+
+cols_to_show = [
+    "pli_type","grade","bnd_accnt_ct",
+    "prod_tx_scores","transaction_repair_ind_scores","pli_type_scores",
+    "assoc_region_scores","bnd_accnt_ct_scores",
+    "score_raw_weighted","score_norm_0_100","flag_other"
+]
+print("\n--- Sample scored rows ---")
+print(df[cols_to_show].head(12))
+
+# ---------- 9) (Optional) save result ----------
+# df.to_excel("elockbox_scored.xlsx", index=False)
 
