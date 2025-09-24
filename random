@@ -1,14 +1,1 @@
-# ==== 2. Function to make score dictionary (scaled by 10) ====
-def make_score_dict(df, col, target="pli_active_cycle_time", scale=10):
-    """
-    Returns {category: mean(target) * scale} for given column
-    """
-    scores = (
-        df.groupby(col)[target]
-          .mean()
-          .mul(scale)                 # scale by 10
-          .round(0)                   # round to nearest int
-          .sort_values(ascending=False)
-          .to_dict()
-    )
-    return scores
+
